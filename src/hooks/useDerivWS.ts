@@ -6,10 +6,29 @@ export function useDerivWS(symbol: string, granularity: number) {
   const wsRef = useRef<WebSocket | null>(null);
   const candlesRef = useRef<CandleData[]>([]);
   const pingIntervalRef = useRef<number | null>(null);
+  const isFetchingHistoryRef = useRef<boolean>(false);
 
   const [candles, setCandles] = useState<CandleData[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   
+  const fetchMoreHistory = () => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    if (candlesRef.current.length === 0) return;
+    if (isFetchingHistoryRef.current) return;
+    
+    isFetchingHistoryRef.current = true;
+    const oldestCandle = candlesRef.current[0];
+
+    wsRef.current.send(JSON.stringify({
+      ticks_history: symbol,
+      adjust_start_time: 1,
+      count: 2000, // Fetch up to 2000 more candles
+      end: oldestCandle.epoch,
+      style: 'candles',
+      granularity: granularity
+    }));
+  };
+
   useEffect(() => {
     const ws = new WebSocket(DERIV_WS_URL);
     wsRef.current = ws;
@@ -41,6 +60,7 @@ export function useDerivWS(symbol: string, granularity: number) {
       
       if (data.error) {
         console.error("Deriv WS Error:", data.error.message);
+        isFetchingHistoryRef.current = false;
         return;
       }
 
@@ -52,7 +72,18 @@ export function useDerivWS(symbol: string, granularity: number) {
           low: c.low,
           close: c.close
         }));
-        candlesRef.current = history;
+
+        if (isFetchingHistoryRef.current && candlesRef.current.length > 0) {
+           // We fetched more history prepending the array
+           // The API returns history ending at `end` epoch, which includes our current oldest candle.
+           const newHistory = history.filter(c => c.epoch < candlesRef.current[0].epoch);
+           candlesRef.current = [...newHistory, ...candlesRef.current];
+           isFetchingHistoryRef.current = false;
+        } else {
+           // Initial load
+           candlesRef.current = history;
+        }
+        
         setCandles([...candlesRef.current]);
       } else if (data.msg_type === 'ohlc') {
         const tick = data.ohlc;
@@ -73,7 +104,7 @@ export function useDerivWS(symbol: string, granularity: number) {
             prev[prev.length - 1] = newCandle;
           } else {
             prev.push(newCandle);
-            if (prev.length > 2000) prev.shift();
+            if (prev.length > 5000) prev.shift(); // Increased max array size
           }
         }
 
@@ -83,10 +114,12 @@ export function useDerivWS(symbol: string, granularity: number) {
 
     ws.onerror = (err) => {
       console.error('WebSocket Error', err);
+      isFetchingHistoryRef.current = false;
     };
 
     ws.onclose = () => {
       setIsConnected(false);
+      isFetchingHistoryRef.current = false;
       if (pingIntervalRef.current) window.clearInterval(pingIntervalRef.current);
     };
 
@@ -101,5 +134,5 @@ export function useDerivWS(symbol: string, granularity: number) {
     };
   }, [symbol, granularity]);
 
-  return { candles, isConnected };
+  return { candles, isConnected, fetchMoreHistory };
 }

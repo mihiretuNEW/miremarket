@@ -9,14 +9,21 @@ export interface CandleData {
 export function calculateEMA(data: number[], period: number): number[] {
   if (!data || data.length === 0 || period <= 0) return [];
   const k = 2 / (period + 1);
-  const emaArray: number[] = [];
+  const emaArray: number[] = new Array(data.length).fill(NaN);
   
-  let ema = data[0];
-  emaArray.push(ema);
+  let firstValidIdx = data.findIndex(d => !isNaN(d));
+  if (firstValidIdx === -1) return emaArray;
+
+  let ema = data[firstValidIdx];
+  emaArray[firstValidIdx] = ema;
   
-  for (let i = 1; i < data.length; i++) {
-    ema = (data[i] - ema) * k + ema;
-    emaArray.push(ema);
+  for (let i = firstValidIdx + 1; i < data.length; i++) {
+    if (isNaN(data[i])) {
+      emaArray[i] = NaN;
+    } else {
+      ema = (data[i] - ema) * k + ema;
+      emaArray[i] = ema;
+    }
   }
   return emaArray;
 }
@@ -198,3 +205,290 @@ export function calculateStochRSI(data: CandleData[], rsiPeriod = 14, stochPerio
   
   return { stochK: smoothK, stochD: smoothD };
 }
+
+export function calculateWMA(data: number[], period: number): number[] {
+  const wmaArray: number[] = [];
+  const denominator = (period * (period + 1)) / 2;
+
+  for (let i = 0; i < data.length; i++) {
+    if (i < period - 1) {
+      wmaArray.push(NaN);
+      continue;
+    }
+    let sum = 0;
+    for (let j = 0; j < period; j++) {
+      const weight = period - j;
+      sum += data[i - j] * weight;
+    }
+    wmaArray.push(sum / denominator);
+  }
+  return wmaArray;
+}
+
+export function calculateATR(data: CandleData[], period = 100): number[] {
+  const tr: number[] = [];
+  const atr: number[] = [];
+
+  for (let i = 0; i < data.length; i++) {
+    if (i === 0) {
+      tr.push(data[i].high - data[i].low);
+      atr.push(NaN);
+      continue;
+    }
+    const high = data[i].high;
+    const low = data[i].low;
+    const prevClose = data[i - 1].close;
+
+    const trValue = Math.max(
+      high - low,
+      Math.abs(high - prevClose),
+      Math.abs(low - prevClose)
+    );
+    tr.push(trValue);
+
+    if (i < period - 1) {
+      atr.push(NaN);
+    } else if (i === period - 1) {
+      // First ATR is SMA of TR
+      const sum = tr.slice(0, period).reduce((a, b) => a + b, 0);
+      atr.push(sum / period);
+    } else {
+      // Smoothed moving average for ATR
+      const prevAtr = atr[i - 1];
+      atr.push((prevAtr * (period - 1) + trValue) / period);
+    }
+  }
+
+  return atr;
+}
+
+export function calculateATRFibEnvelopes(data: CandleData[], wmaPeriod = 100, atrPeriod = 100, atrMultiplier = 3) {
+  const closes = data.map(d => d.close);
+  const wma = calculateWMA(closes, wmaPeriod);
+  const atr = calculateATR(data, atrPeriod);
+
+  const upper50: number[] = [];
+  const upper618: number[] = [];
+  const upper786: number[] = [];
+  const lower50: number[] = [];
+  const lower618: number[] = [];
+  const lower786: number[] = [];
+  const bullish: boolean[] = [];
+
+  for (let i = 0; i < data.length; i++) {
+    if (isNaN(wma[i]) || isNaN(atr[i])) {
+      upper50.push(NaN);
+      upper618.push(NaN);
+      upper786.push(NaN);
+      lower50.push(NaN);
+      lower618.push(NaN);
+      lower786.push(NaN);
+      bullish.push(closes[i] > (wma[i] || 0)); // fallback if needed, but condition handles NaN
+      continue;
+    }
+    
+    // Trend condition
+    bullish.push(closes[i] > wma[i]);
+
+    const atrBand = atr[i] * atrMultiplier;
+    upper50.push(wma[i] + atrBand * 0.5);
+    upper618.push(wma[i] + atrBand * 0.618);
+    upper786.push(wma[i] + atrBand * 0.786);
+
+    lower50.push(wma[i] - atrBand * 0.5);
+    lower618.push(wma[i] - atrBand * 0.618);
+    lower786.push(wma[i] - atrBand * 0.786);
+  }
+
+  return {
+    wma,
+    bullish,
+    upper50,
+    upper618,
+    upper786,
+    lower50,
+    lower618,
+    lower786
+  };
+}
+
+export function calculateZLEMA(data: number[], period: number): number[] {
+  const lag = Math.floor((period - 1) / 2);
+  const adjustedData: number[] = new Array(data.length).fill(NaN);
+  for (let i = lag; i < data.length; i++) {
+    if (!isNaN(data[i]) && !isNaN(data[i - lag])) {
+      adjustedData[i] = data[i] + (data[i] - data[i - lag]);
+    } else {
+      adjustedData[i] = data[i]; // Fallback to raw data if lag not available but current is (e.g., handles start of array if we want, but better to keep NaN if we want strict)
+    }
+  }
+  // To avoid entirely NaN array if strictly lag-based, we can just use regular EMA initialization
+  return calculateEMA(adjustedData, period);
+}
+
+export function calculateZMACD(data: CandleData[], fastPeriod = 12, slowPeriod = 26, signalPeriod = 9) {
+  const closes = data.map(d => d.close);
+  const fastZlema = calculateZLEMA(closes, fastPeriod);
+  const slowZlema = calculateZLEMA(closes, slowPeriod);
+  
+  const macd: number[] = [];
+  for (let i = 0; i < data.length; i++) {
+    if (isNaN(fastZlema[i]) || isNaN(slowZlema[i])) {
+      macd.push(NaN);
+    } else {
+      macd.push(fastZlema[i] - slowZlema[i]);
+    }
+  }
+  
+  const signal = calculateZLEMA(macd, signalPeriod);
+  const histogram: number[] = [];
+  for (let i = 0; i < data.length; i++) {
+    histogram.push(isNaN(macd[i]) || isNaN(signal[i]) ? NaN : macd[i] - signal[i]);
+  }
+  
+  return { macd, signal, histogram };
+}
+
+export function calculateStandardSMI(data: CandleData[], qPeriod = 14, rPeriod = 25, sPeriod = 2, signalPeriod = 9) {
+  const diffs: number[] = new Array(data.length).fill(NaN);
+  const hls: number[] = new Array(data.length).fill(NaN);
+  
+  for (let i = 0; i < data.length; i++) {
+    if (i < qPeriod - 1) continue;
+    
+    let hh = -Infinity;
+    let ll = Infinity;
+    for (let j = 0; j < qPeriod; j++) {
+      const c = data[i - j];
+      if (c.high > hh) hh = c.high;
+      if (c.low < ll) ll = c.low;
+    }
+    
+    const cm = (hh + ll) / 2;
+    diffs[i] = data[i].close - cm;
+    hls[i] = hh - ll;
+  }
+  
+  const dEma1 = calculateEMA(diffs, rPeriod);
+  const dEma2 = calculateEMA(dEma1, sPeriod);
+  
+  const hlEma1 = calculateEMA(hls, rPeriod);
+  const hlEma2 = calculateEMA(hlEma1, sPeriod);
+  
+  const smi = [];
+  for (let i = 0; i < data.length; i++) {
+    if (isNaN(dEma2[i]) || isNaN(hlEma2[i]) || hlEma2[i] === 0) {
+      smi.push(NaN);
+    } else {
+      smi.push(100 * (dEma2[i] / (hlEma2[i] / 2)));
+    }
+  }
+  
+  const signal = calculateEMA(smi, signalPeriod);
+  return { smi, signal };
+}
+
+export function calculateMAEnvelope(data: CandleData[], period = 20, percent = 5) {
+  const closes = data.map(d => d.close);
+  const sma = calculateSMA(closes, period);
+  const upper = [];
+  const lower = [];
+  
+  for (let i = 0; i < data.length; i++) {
+    if (isNaN(sma[i])) {
+      upper.push(NaN);
+      lower.push(NaN);
+    } else {
+      upper.push(sma[i] * (1 + percent / 100));
+      lower.push(sma[i] * (1 - percent / 100));
+    }
+  }
+  
+  return { sma, upper, lower };
+}
+
+export function calculateTwoPole(data: CandleData[], period = 14) {
+  const closes = data.map(d => d.close);
+  
+  const sma = calculateSMA(closes, period);
+  const deviations: number[] = [];
+  
+  for (let i = 0; i < data.length; i++) {
+    if (isNaN(sma[i])) {
+      deviations.push(NaN);
+    } else {
+      deviations.push(closes[i] - sma[i]);
+    }
+  }
+  
+  const rollingHighestDev: number[] = [];
+  for(let i=0; i<data.length; i++){
+    if(i < period - 1 || isNaN(deviations[i])) {
+      rollingHighestDev.push(NaN);
+    } else {
+      let maxD = 0.0000000001;
+      for(let j=0; j<period; j++){
+        maxD = Math.max(maxD, Math.abs(deviations[i-j]));
+      }
+      rollingHighestDev.push(maxD);
+    }
+  }
+
+  const normDev = deviations.map((d, i) => isNaN(rollingHighestDev[i]) ? NaN : d / rollingHighestDev[i]);
+
+  const ema1 = calculateEMA(normDev, period);
+  const oscillator = calculateEMA(ema1, period); 
+
+  const signalPeriod = Math.max(Math.floor(period / 2), 2);
+  const signal = calculateEMA(oscillator, signalPeriod);
+  
+  const bullishCrossover: boolean[] = [];
+  const bearishCrossover: boolean[] = [];
+  const invalidationLine: (number | null)[] = new Array(data.length).fill(null);
+  const invalidatedFlags: boolean[] = new Array(data.length).fill(false);
+
+  let currentInvalidationValue: number | null = null;
+  let currentSignalType: 'bull' | 'bear' | null = null;
+  
+  for (let i = 1; i < data.length; i++) {
+    if (isNaN(oscillator[i]) || isNaN(signal[i]) || isNaN(oscillator[i - 1]) || isNaN(signal[i - 1])) {
+      bullishCrossover.push(false);
+      bearishCrossover.push(false);
+      continue;
+    }
+
+    const isBullCross = oscillator[i] > signal[i] && oscillator[i - 1] <= signal[i - 1] && oscillator[i] < 0.5;
+    const isBearCross = oscillator[i] < signal[i] && oscillator[i - 1] >= signal[i - 1] && oscillator[i] > -0.5;
+
+    bullishCrossover.push(isBullCross);
+    bearishCrossover.push(isBearCross);
+    
+    if (isBullCross) {
+      currentInvalidationValue = data[i].low;
+      currentSignalType = 'bull';
+    } else if (isBearCross) {
+      currentInvalidationValue = data[i].high;
+      currentSignalType = 'bear';
+    }
+
+    if (currentInvalidationValue !== null) {
+      invalidationLine[i] = currentInvalidationValue;
+      
+      if (currentSignalType === 'bull' && data[i].close < currentInvalidationValue) {
+        invalidatedFlags[i] = true;
+        currentInvalidationValue = null;
+        currentSignalType = null;
+      } else if (currentSignalType === 'bear' && data[i].close > currentInvalidationValue) {
+        invalidatedFlags[i] = true;
+        currentInvalidationValue = null;
+        currentSignalType = null;
+      }
+    }
+  }
+  
+  bullishCrossover.unshift(false);
+  bearishCrossover.unshift(false);
+
+  return { oscillator, signal, bullishCrossover, bearishCrossover, invalidationLine, invalidatedFlags };
+}
+

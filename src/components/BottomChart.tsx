@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
-import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, Scatter, ReferenceLine } from 'recharts';
-import { CandleData, calculateSMA, calculateRSI, calculateBollingerBands, calculateParabolicSAR, calculateStochRSI } from '../lib/calculators';
+import { ResponsiveContainer, ComposedChart, Bar, Line, Area, XAxis, YAxis, Tooltip, Scatter, ReferenceLine } from 'recharts';
+import { CandleData, calculateSMA, calculateRSI, calculateBollingerBands, calculateParabolicSAR, calculateStochRSI, calculateATRFibEnvelopes, calculateMAEnvelope, calculateTwoPole } from '../lib/calculators';
 import type { IndicatorSettings } from '../App';
 
 interface BottomChartProps {
@@ -9,6 +9,25 @@ interface BottomChartProps {
   settings: IndicatorSettings;
   zoomLevel: number;
   scrollOffset: number;
+}
+
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="absolute top-0 left-0 flex flex-wrap gap-x-3 gap-y-1 text-[10px] items-center bg-transparent drop-shadow-md z-[100] max-w-[80vw]">
+         {payload.map((entry: any, index: number) => {
+            if (!entry.name || entry.name.includes('Pocket') || entry.name === 'CandleBody' || entry.name.includes('WMA (Base)')) return null;
+            if (entry.value === null || entry.value === undefined) return null;
+            if (entry.name === 'Candle') {
+              const { open, high, low, close } = entry.payload;
+              return <span key={index} className="text-neutral-300 font-medium">O: {open.toFixed(2)} H: {high.toFixed(2)} L: {low.toFixed(2)} C: {close.toFixed(2)}</span>;
+            }
+            return <span key={index} style={{color: entry.color}}>{entry.name}: {typeof entry.value === 'number' ? entry.value.toFixed(2) : entry.value}</span>;
+         })}
+      </div>
+    );
+  }
+  return null;
 }
 
 const CandlestickShape = (props: any) => {
@@ -51,6 +70,15 @@ export function BottomChart({ data, activeIndicators, settings, zoomLevel, scrol
     const bbData = calculateBollingerBands(data, settings.BB_PERIOD, settings.BB_MULT);
     const psarData = calculateParabolicSAR(data, settings.PSAR_STEP, settings.PSAR_MAX);
     const stochRsiData = calculateStochRSI(data, settings.STOCH_RSI_PERIOD, settings.STOCH_PERIOD, settings.STOCH_K, settings.STOCH_D);
+    const atrFibData = activeIndicators.ATRFIBENV 
+      ? calculateATRFibEnvelopes(data, settings.ATRFIB_WMA_PERIOD, settings.ATRFIB_ATR_PERIOD, settings.ATRFIB_MULTIPLIER)
+      : null;
+    const maEnvData = activeIndicators.MAENV
+      ? calculateMAEnvelope(data, settings.MAENV_PERIOD, settings.MAENV_PERCENT)
+      : null;
+    const twoPoleData = activeIndicators.TWOPOLE
+      ? calculateTwoPole(data, settings.TWOPOLE_FILTER_LENGTH)
+      : null;
 
     const startIndex = Math.max(0, data.length - zoomLevel - scrollOffset);
     const endIndex = Math.max(0, data.length - scrollOffset);
@@ -59,6 +87,33 @@ export function BottomChart({ data, activeIndicators, settings, zoomLevel, scrol
     let sliced = slicedInput.map((d, index) => {
       const i = startIndex + index;
       const timeStr = new Date(d.epoch * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      
+      const isBull = atrFibData?.bullish[i];
+      const fibWmaRaw = atrFibData?.wma[i] !== undefined && !isNaN(atrFibData.wma[i]) ? atrFibData.wma[i] : null;
+
+      const fbU50 = atrFibData?.upper50[i] !== undefined && !isNaN(atrFibData.upper50[i]) ? atrFibData.upper50[i] : null;
+      const fbU618 = atrFibData?.upper618[i] !== undefined && !isNaN(atrFibData.upper618[i]) ? atrFibData.upper618[i] : null;
+      const fbU786 = atrFibData?.upper786[i] !== undefined && !isNaN(atrFibData.upper786[i]) ? atrFibData.upper786[i] : null;
+      
+      const fbL50 = atrFibData?.lower50[i] !== undefined && !isNaN(atrFibData.lower50[i]) ? atrFibData.lower50[i] : null;
+      const fbL618 = atrFibData?.lower618[i] !== undefined && !isNaN(atrFibData.lower618[i]) ? atrFibData.lower618[i] : null;
+      const fbL786 = atrFibData?.lower786[i] !== undefined && !isNaN(atrFibData.lower786[i]) ? atrFibData.lower786[i] : null;
+
+      let tpBullArrow = null;
+      let tpBearArrow = null;
+      let tpInv = null;
+      let tpInvX = null;
+      
+      if (twoPoleData) {
+        if (settings.visibility.twopoleSignal) {
+           if (twoPoleData.bullishCrossover[i]) tpBullArrow = d.low - ((d.high - d.low) * 0.1);
+           if (twoPoleData.bearishCrossover[i]) tpBearArrow = d.high + ((d.high - d.low) * 0.1);
+        }
+        if (settings.visibility.twopoleInvalidation) {
+           tpInv = twoPoleData.invalidationLine[i];
+           if (twoPoleData.invalidatedFlags[i]) tpInvX = d.close;
+        }
+      }
 
       return {
         ...d,
@@ -71,6 +126,26 @@ export function BottomChart({ data, activeIndicators, settings, zoomLevel, scrol
         psar: psarData[i] !== undefined && !isNaN(psarData[i]) ? psarData[i] : null,
         stochK: stochRsiData.stochK[i] !== undefined && !isNaN(stochRsiData.stochK[i]) ? stochRsiData.stochK[i] : null,
         stochD: stochRsiData.stochD[i] !== undefined && !isNaN(stochRsiData.stochD[i]) ? stochRsiData.stochD[i] : null,
+        fibUpper50: fbU50,
+        fibUpper618: fbU618,
+        fibUpper786: fbU786,
+        fibLower50: fbL50,
+        fibLower618: fbL618,
+        fibLower786: fbL786,
+        fibWmaBull: isBull ? fibWmaRaw : null,
+        fibWmaBear: isBull === false ? fibWmaRaw : null,
+        fibWma: fibWmaRaw,
+        // Area filled arrays: [bottom, top]
+        upperPocket1: (!isBull && fbU50 && fbU618) ? [fbU50, fbU618] : null,
+        upperPocket2: (!isBull && fbU618 && fbU786) ? [fbU618, fbU786] : null,
+        lowerPocket1: (isBull && fbL50 && fbL618) ? [fbL50, fbL618] : null,
+        lowerPocket2: (isBull && fbL618 && fbL786) ? [fbL618, fbL786] : null,
+        envUpper: maEnvData?.upper[i] !== undefined && !isNaN(maEnvData.upper[i]) ? maEnvData.upper[i] : null,
+        envLower: maEnvData?.lower[i] !== undefined && !isNaN(maEnvData.lower[i]) ? maEnvData.lower[i] : null,
+        tpBullArrow,
+        tpBearArrow,
+        tpInv,
+        tpInvX
       };
     });
 
@@ -78,7 +153,10 @@ export function BottomChart({ data, activeIndicators, settings, zoomLevel, scrol
     for (let i = 0; i < dummyCount; i++) {
        sliced.push({ 
          time: '', epoch: 0, open: null, close: null, high: null, low: null, candleBody: null, 
-         ma: null, rsi: null, bbUpper: null, bbLower: null, psar: null, stochK: null, stochD: null
+         ma: null, rsi: null, bbUpper: null, bbLower: null, psar: null, stochK: null, stochD: null,
+         fibUpper50: null, fibUpper618: null, fibUpper786: null, fibLower50: null, fibLower618: null, fibLower786: null, fibWmaBull: null, fibWmaBear: null, fibWma: null,
+         envUpper: null, envLower: null,
+         tpBullArrow: null, tpBearArrow: null, tpInv: null, tpInvX: null
        } as any);
     }
 
@@ -99,6 +177,22 @@ export function BottomChart({ data, activeIndicators, settings, zoomLevel, scrol
     if (validBbs.length > 0) {
       maxHigh = Math.max(maxHigh, Math.max(...validBbs.map(d => (d as any).bbUpper as number)));
       minLow = Math.min(minLow, Math.min(...validBbs.map(d => (d as any).bbLower as number)));
+    }
+  }
+
+  if (activeIndicators.ATRFIBENV) {
+    const validEnvs = chartData.filter(d => (d as any).fibUpper786 !== null);
+    if (validEnvs.length > 0) {
+      maxHigh = Math.max(maxHigh, Math.max(...validEnvs.map(d => (d as any).fibUpper786 as number)));
+      minLow = Math.min(minLow, Math.min(...validEnvs.map(d => (d as any).fibLower786 as number)));
+    }
+  }
+
+  if (activeIndicators.MAENV) {
+    const validEnvs = chartData.filter(d => (d as any).envUpper !== null);
+    if (validEnvs.length > 0) {
+      maxHigh = Math.max(maxHigh, Math.max(...validEnvs.map(d => (d as any).envUpper as number)));
+      minLow = Math.min(minLow, Math.min(...validEnvs.map(d => (d as any).envLower as number)));
     }
   }
 
@@ -131,16 +225,8 @@ export function BottomChart({ data, activeIndicators, settings, zoomLevel, scrol
 
           <Tooltip 
             cursor={{ stroke: '#555', strokeWidth: 1, strokeDasharray: '3 3' }}
-            contentStyle={{ backgroundColor: '#111', borderColor: '#333', fontSize: '12px' }}
-            labelStyle={{ display: 'none' }}
-            itemStyle={{ color: '#ccc' }}
-            formatter={(value: any, name: string, props: any) => {
-               if (name === 'Candle' && props.payload.epoch > 0) {
-                 const { open, high, low, close } = props.payload;
-                 return [`O: ${open} H: ${high} L: ${low} C: ${close}`, ''];
-               }
-               return [Number(value).toFixed(2), name];
-            }}
+            position={{ y: 0, x: 2 }}
+            content={<CustomTooltip />}
           />
           
           {validCandles.length > 0 && (() => {
@@ -191,16 +277,62 @@ export function BottomChart({ data, activeIndicators, settings, zoomLevel, scrol
               isAnimationActive={false} 
           />
           
-          {activeIndicators.MA && <Line yAxisId="main" type="monotone" dataKey="ma" stroke="#ec4899" strokeWidth={1.5} dot={false} isAnimationActive={false} name="MA" />}
-          {activeIndicators.RSI && <Line yAxisId="percent" type="monotone" dataKey="rsi" stroke="#a855f7" strokeWidth={1.2} dot={false} isAnimationActive={false} name="RSI" />}
+          {activeIndicators.MA && settings.visibility.ma && <Line yAxisId="main" type="monotone" dataKey="ma" stroke={settings.colors.ma} strokeWidth={1.5} dot={false} isAnimationActive={false} name="MA" />}
+          {activeIndicators.RSI && settings.visibility.rsi && <Line yAxisId="percent" type="monotone" dataKey="rsi" stroke={settings.colors.rsi} strokeWidth={1.2} dot={false} isAnimationActive={false} name="RSI" />}
           {activeIndicators.BB && (
               <>
-              <Line yAxisId="main" type="monotone" dataKey="bbUpper" stroke="#14b8a6" strokeWidth={1} dot={false} isAnimationActive={false} name="BB Up" />
-              <Line yAxisId="main" type="monotone" dataKey="bbLower" stroke="#14b8a6" strokeWidth={1} dot={false} isAnimationActive={false} name="BB Dn" />
+              {settings.visibility.bbUpper && <Line yAxisId="main" type="monotone" dataKey="bbUpper" stroke={settings.colors.bbUpper} strokeWidth={1} dot={false} isAnimationActive={false} name="BB Up" />}
+              {settings.visibility.bbLower && <Line yAxisId="main" type="monotone" dataKey="bbLower" stroke={settings.colors.bbLower} strokeWidth={1} dot={false} isAnimationActive={false} name="BB Dn" />}
               </>
           )}
-          {activeIndicators.PSAR && (
-              <Scatter yAxisId="main" dataKey="psar" fill="#eab308" name="PSAR" isAnimationActive={false} />
+          {activeIndicators.PSAR && settings.visibility.psar && (
+              <Scatter yAxisId="main" dataKey="psar" fill={settings.colors.psar} name="PSAR" isAnimationActive={false} />
+          )}
+          {activeIndicators.MAENV && (
+              <>
+              {settings.visibility.maenvUpper && <Line yAxisId="main" type="monotone" dataKey="envUpper" stroke={settings.colors.maenvUpper} strokeWidth={1} dot={false} isAnimationActive={false} name="Env Up" />}
+              {settings.visibility.maenvLower && <Line yAxisId="main" type="monotone" dataKey="envLower" stroke={settings.colors.maenvLower} strokeWidth={1} dot={false} isAnimationActive={false} name="Env Dn" />}
+              </>
+          )}
+
+          {activeIndicators.ATRFIBENV && (
+              <>
+              {/* Upper envelopes (Resistance when Bearish) */}
+              <Area yAxisId="main" type="monotone" dataKey="upperPocket1" fill="#ef4444" fillOpacity={0.15} stroke="none" isAnimationActive={false} />
+              <Area yAxisId="main" type="monotone" dataKey="upperPocket2" fill="#ef4444" fillOpacity={0.05} stroke="none" isAnimationActive={false} />
+              <Line yAxisId="main" type="monotone" dataKey="fibUpper786" stroke="#f87171" strokeWidth={1} strokeOpacity={0.3} dot={false} isAnimationActive={false} name="Fib Up 0.786" />
+              <Line yAxisId="main" type="monotone" dataKey="fibUpper618" stroke="#ef4444" strokeWidth={1} strokeOpacity={0.5} dot={false} isAnimationActive={false} name="Fib Up 0.618" />
+              <Line yAxisId="main" type="monotone" dataKey="fibUpper50" stroke="#dc2626" strokeWidth={1} strokeOpacity={0.8} dot={false} isAnimationActive={false} name="Fib Up 0.500" />
+              
+              {/* Lower envelopes (Support when Bullish) */}
+              <Area yAxisId="main" type="monotone" dataKey="lowerPocket1" fill="#dc2626" fillOpacity={0.15} stroke="none" isAnimationActive={false} />
+              <Area yAxisId="main" type="monotone" dataKey="lowerPocket2" fill="#dc2626" fillOpacity={0.05} stroke="none" isAnimationActive={false} />
+              <Line yAxisId="main" type="monotone" dataKey="fibLower50" stroke="#dc2626" strokeWidth={1} strokeOpacity={0.8} dot={false} isAnimationActive={false} name="Fib Dn 0.500" />
+              <Line yAxisId="main" type="monotone" dataKey="fibLower618" stroke="#ef4444" strokeWidth={1} strokeOpacity={0.5} dot={false} isAnimationActive={false} name="Fib Dn 0.618" />
+              <Line yAxisId="main" type="monotone" dataKey="fibLower786" stroke="#f87171" strokeWidth={1} strokeOpacity={0.3} dot={false} isAnimationActive={false} name="Fib Dn 0.786" />
+              
+              {/* Center WMA - Base gray line fills styling gaps, then overlay trend lines */}
+              <Line yAxisId="main" type="monotone" dataKey="fibWma" stroke="#6b7280" strokeWidth={2} dot={false} isAnimationActive={false} name="WMA (Base)" />
+              <Line yAxisId="main" type="monotone" dataKey="fibWmaBull" stroke="#0ea5e9" strokeWidth={2} dot={false} connectNulls={false} isAnimationActive={false} name="WMA (Bull)" />
+              <Line yAxisId="main" type="monotone" dataKey="fibWmaBear" stroke="#ef4444" strokeWidth={2} dot={false} connectNulls={false} isAnimationActive={false} name="WMA (Bear)" />
+              </>
+          )}
+
+          {activeIndicators.TWOPOLE && (
+              <>
+              {settings.visibility.twopoleInvalidation && (
+                  <>
+                  <Line yAxisId="main" type="stepAfter" dataKey="tpInv" stroke="#aaaaaa" strokeWidth={1} strokeDasharray="4 4" dot={false} isAnimationActive={false} connectNulls={false} name="Inv Level" />
+                  <Scatter yAxisId="main" dataKey="tpInvX" shape={(props: any) => props.payload.tpInvX === null ? null : <text x={props.cx} y={props.cy} fill="#ef4444" fontSize={14} fontWeight="bold" textAnchor="middle" alignmentBaseline="middle">X</text>} isAnimationActive={false} />
+                  </>
+              )}
+              {settings.visibility.twopoleSignal && (
+                  <>
+                  <Scatter yAxisId="main" dataKey="tpBullArrow" shape={(props: any) => props.payload.tpBullArrow === null ? null : <text x={props.cx} y={props.cy} fill={settings.colors.twopoleBull} fontSize={16} textAnchor="middle" alignmentBaseline="text-before-edge">▲</text>} isAnimationActive={false} />
+                  <Scatter yAxisId="main" dataKey="tpBearArrow" shape={(props: any) => props.payload.tpBearArrow === null ? null : <text x={props.cx} y={props.cy} fill={settings.colors.twopoleBear} fontSize={16} textAnchor="middle" alignmentBaseline="text-after-edge">▼</text>} isAnimationActive={false} />
+                  </>
+              )}
+              </>
           )}
           
         </ComposedChart>
