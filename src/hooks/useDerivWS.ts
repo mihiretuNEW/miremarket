@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { DERIV_WS_URL } from '../lib/derivConfig';
 import type { CandleData } from '../lib/calculators';
 
-export function useDerivWS(symbol: string, granularity: number) {
+export function useDerivWS(symbol: string, granularity: number, initialCount: number = 1000) {
   const wsRef = useRef<WebSocket | null>(null);
   const candlesRef = useRef<CandleData[]>([]);
   const pingIntervalRef = useRef<number | null>(null);
@@ -47,7 +47,7 @@ export function useDerivWS(symbol: string, granularity: number) {
       ws.send(JSON.stringify({
         ticks_history: symbol,
         adjust_start_time: 1,
-        count: 1000,
+        count: initialCount,
         end: 'latest',
         style: 'candles',
         granularity: granularity,
@@ -125,12 +125,7 @@ export function useDerivWS(symbol: string, granularity: number) {
 
     return () => {
       if (pingIntervalRef.current) window.clearInterval(pingIntervalRef.current);
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ forget_all: 'ticks' }));
-        ws.close();
-      } else {
-        ws.close();
-      }
+      ws.close();
     };
   }, [symbol, granularity]);
 

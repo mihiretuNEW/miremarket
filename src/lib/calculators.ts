@@ -6,90 +6,81 @@ export interface CandleData {
   close: number;
 }
 
-export interface LuxPivotLine {
-  type: 'support' | 'resistance';
-  idx: number;
-  epoch: number;
-  price: number;
-  brokenIdx: number | null;
-  brokenEpoch: number | null;
+export interface GTATrendResult {
+  colorState: 0 | 1 | 2; // 0=Green(Bullish), 1=Red(Bearish), 2=Yellow(Neutral)
+  sellArrow: number | null; // Value to plot arrow ABOVE candle
+  buyArrow: number | null;  // Value to plot arrow BELOW candle
 }
 
-export function calculateLuxAlgoSR(data: CandleData[], leftBars: number, rightBars: number): LuxPivotLine[] {
-  const lines: LuxPivotLine[] = [];
-  if (!data || data.length < leftBars + rightBars + 1) return lines;
+export function calculateGTATrend(data: CandleData[], longPeriod = 21, midPeriod = 13, shortPeriod = 6): GTATrendResult[] {
+  const closePrices = data.map(d => d.close);
+  const emaLong = calculateEMA(closePrices, longPeriod);
+  const emaMid = calculateEMA(closePrices, midPeriod);
+  const emaShort = calculateEMA(closePrices, shortPeriod);
 
-  for (let i = leftBars; i < data.length - rightBars; i++) {
-    const currentHigh = data[i].high;
-    const currentLow = data[i].low;
-    
-    // Check Resistance (Pivot High)
-    let isPivotHigh = true;
-    for (let j = 1; j <= leftBars; j++) {
-      if (data[i - j].high >= currentHigh) { isPivotHigh = false; break; }
-    }
-    if (isPivotHigh) {
-      for (let j = 1; j <= rightBars; j++) {
-        if (data[i + j].high > currentHigh) { isPivotHigh = false; break; }
-      }
+  const results: GTATrendResult[] = [];
+  
+  for (let i = 0; i < data.length; i++) {
+    if (isNaN(emaLong[i]) || isNaN(emaMid[i]) || isNaN(emaShort[i])) {
+      results.push({ colorState: 2, sellArrow: null, buyArrow: null });
+      continue;
     }
     
-    // Check Support (Pivot Low)
-    let isPivotLow = true;
-    for (let j = 1; j <= leftBars; j++) {
-      if (data[i - j].low <= currentLow) { isPivotLow = false; break; }
+    // Trend condition checking
+    const eL = emaLong[i];
+    const eM = emaMid[i];
+    const eS = emaShort[i];
+    
+    let state: 0 | 1 | 2 = 2; // neutral
+    if (eS > eM && eM > eL) {
+      state = 0; // Bullish
+    } else if (eS < eM && eM < eL) {
+      state = 1; // Bearish
     }
-    if (isPivotLow) {
-      for (let j = 1; j <= rightBars; j++) {
-        if (data[i + j].low < currentLow) { isPivotLow = false; break; }
+    
+    // Arrows triggers: when crossing into state = 0 from non-0 -> Buy
+    let buyArrow = null;
+    let sellArrow = null;
+    if (i > 0) {
+      const prevRes = results[i - 1];
+      if (state === 0 && prevRes.colorState !== 0) {
+        buyArrow = data[i].low - (data[i].high - data[i].low) * 0.1; // Below bar
+      } else if (state === 1 && prevRes.colorState !== 1) {
+        sellArrow = data[i].high + (data[i].high - data[i].low) * 0.1; // Above bar
       }
     }
-
-    if (isPivotHigh) {
-      lines.push({
-        type: 'resistance',
-        idx: i,
-        epoch: data[i].epoch,
-        price: currentHigh,
-        brokenIdx: null,
-        brokenEpoch: null
-      });
-    }
-
-    if (isPivotLow) {
-      lines.push({
-        type: 'support',
-        idx: i,
-        epoch: data[i].epoch,
-        price: currentLow,
-        brokenIdx: null,
-        brokenEpoch: null
-      });
-    }
+    
+    results.push({ colorState: state, sellArrow, buyArrow });
   }
-
-  // Detect breaks
-  for (const line of lines) {
-    const startCheck = line.idx + rightBars; 
-    for (let k = startCheck; k < data.length; k++) {
-      if (line.type === 'resistance') {
-        if (data[k].close > line.price) {
-          line.brokenIdx = k;
-          line.brokenEpoch = data[k].epoch;
-          break;
-        }
-      } else {
-        if (data[k].close < line.price) {
-          line.brokenIdx = k;
-          line.brokenEpoch = data[k].epoch;
-          break;
-        }
-      }
-    }
-  }
-
-  return lines;
+  
+  return results;
 }
+
+export interface SimpleScalpingResult {
+  ribbonColor: 'green' | 'red';
+}
+
+export function calculateSimpleScalping(data: CandleData[], lookback = 6, emaInput = 4, lookbackHl = 2): SimpleScalpingResult[] {
+  const results: SimpleScalpingResult[] = [];
+  const closes = data.map(d => d.close);
+  const myEma = calculateEMA(closes, emaInput);
+  
+  // Implementation of simple scalping ribbon state logic based on inputs.
+  // Generally ribbon changes state based on fast EMA versus a trailing line.
+  // Assuming a smoothed median based on lookback.
+  const mySma = calculateSMA(closes, lookback);
+  
+  for (let i = 0; i < data.length; i++) {
+    if (isNaN(myEma[i]) || isNaN(mySma[i])) {
+      results.push({ ribbonColor: 'green' }); // Default
+      continue;
+    }
+    const color = myEma[i] > mySma[i] ? 'green' : 'red';
+    results.push({ ribbonColor: color });
+  }
+  return results;
+}
+
 
 export function calculateEMA(data: number[], period: number): number[] {
   if (!data || data.length === 0 || period <= 0) return [];
@@ -706,4 +697,179 @@ export function calculateMSMT(data: CandleData[], atrPeriod = 14, atrMult = 3.0,
   
   return { trailingLine, trailingDir, chochLine, activeTargets };
 }
+
+export function calculateUTBot(data: CandleData[], keyValue = 1, atrPeriod = 10) {
+  const atr = calculateATR(data, atrPeriod);
+  
+  const trailingStop: (number | null)[] = new Array(data.length).fill(null);
+  const trend: (1 | -1)[] = new Array(data.length).fill(1);
+  const buySignal: boolean[] = new Array(data.length).fill(false);
+  const sellSignal: boolean[] = new Array(data.length).fill(false);
+  
+  let prevTs = 0.0;
+  let prevClose = 0.0;
+  let currentTrend: 1 | -1 = 1;
+  
+  for (let i = 0; i < data.length; i++) {
+    const close = data[i].close;
+    if (i === 0 || isNaN(atr[i])) {
+      const loss = isNaN(atr[i]) ? (data[i].high - data[i].low) * keyValue : atr[i] * keyValue;
+      trailingStop[i] = close - loss;
+      prevTs = trailingStop[i] as number;
+      prevClose = close;
+      continue;
+    }
+    
+    const loss = atr[i] * keyValue;
+    let ts = 0;
+    
+    if (close > prevTs && prevClose > prevTs) {
+      ts = Math.max(prevTs, close - loss);
+    } else if (close < prevTs && prevClose < prevTs) {
+      ts = Math.min(prevTs, close + loss);
+    } else if (close > prevTs) {
+      ts = close - loss;
+    } else {
+      ts = close + loss;
+    }
+    
+    trailingStop[i] = ts;
+    
+    if (close < ts && prevClose > prevTs) {
+      currentTrend = -1;
+    } else if (close > ts && prevClose < prevTs) {
+      currentTrend = 1;
+    }
+    
+    trend[i] = currentTrend;
+    
+    if (i > 0 && trend[i] !== trend[i-1]) {
+      if (currentTrend === 1) {
+        buySignal[i] = true;
+      } else if (currentTrend === -1) {
+        sellSignal[i] = true;
+      }
+    }
+    
+    prevTs = ts;
+    prevClose = close;
+  }
+  
+  return { trailingStop, trend, buySignal, sellSignal };
+}
+
+export function calculateWAE(data: CandleData[], sensitivity = 150, fastPeriod = 20, slowPeriod = 40, channelPeriod = 20, mult = 2.0) {
+  const closes = data.map(d => d.close);
+  const emaFast = calculateEMA(closes, fastPeriod);
+  const emaSlow = calculateEMA(closes, slowPeriod);
+  const bb = calculateBollingerBands(data, channelPeriod, mult);
+  const atr = calculateATR(data, 20); // Fixed 20 period based on specs
+
+  const waeForce: (number | null)[] = new Array(data.length).fill(null);
+  const waeColor: (number | null)[] = new Array(data.length).fill(null); // 1 = Green, -1 = Red, null = none
+  const waeExplosion: (number | null)[] = new Array(data.length).fill(null);
+  const waeDeadZone: (number | null)[] = new Array(data.length).fill(null);
+  const waeBuySignal: boolean[] = new Array(data.length).fill(false);
+  const waeSellSignal: boolean[] = new Array(data.length).fill(false);
+
+  for (let i = 1; i < data.length; i++) {
+    if (isNaN(emaFast[i]) || isNaN(emaSlow[i]) || isNaN(emaFast[i-1]) || isNaN(emaSlow[i-1])) continue;
+    
+    const trend1 = emaFast[i] - emaSlow[i];
+    const trend2 = emaFast[i-1] - emaSlow[i-1];
+    const diff = (trend1 - trend2) * sensitivity;
+
+    if (!isNaN(bb.upper[i]) && !isNaN(bb.lower[i])) {
+      waeExplosion[i] = bb.upper[i] - bb.lower[i];
+    }
+
+    if (!isNaN(atr[i])) {
+      waeDeadZone[i] = atr[i] * 0.7;
+    }
+
+    if (diff >= 0) {
+      waeForce[i] = diff;
+      waeColor[i] = 1; // Green
+    } else {
+      waeForce[i] = -diff;
+      waeColor[i] = -1; // Red
+    }
+
+    const exp = waeExplosion[i] ?? 0;
+    const dz = waeDeadZone[i] ?? 0;
+
+    if (waeColor[i] === 1 && waeForce[i]! > exp && waeForce[i]! > dz) {
+      waeBuySignal[i] = true;
+    }
+
+    if (waeColor[i] === -1 && waeForce[i]! > exp && waeForce[i]! > dz) {
+      waeSellSignal[i] = true;
+    }
+  }
+
+  return { waeForce, waeColor, waeExplosion, waeDeadZone, waeBuySignal, waeSellSignal };
+}
+
+export function calculateNWEnv(data: CandleData[], h = 8, mult = 3.0) {
+
+  const base: (number | null)[] = new Array(data.length).fill(null);
+  const upper: (number | null)[] = new Array(data.length).fill(null);
+  const lower: (number | null)[] = new Array(data.length).fill(null);
+  const buySignal: boolean[] = new Array(data.length).fill(false);
+  const sellSignal: boolean[] = new Array(data.length).fill(false);
+  const windowSize = Math.max(100, h * 5); // Limit lookback to prevent O(N^2)
+
+  const maeArr: number[] = new Array(data.length).fill(0);
+
+  // Pass 1: Calculate Base and MAE
+  for (let i = 0; i < data.length; i++) {
+    const t = i;
+    let sumW = 0;
+    let sumSW = 0;
+
+    const start = Math.max(0, i - windowSize);
+    for (let j = start; j <= i; j++) {
+      const w = Math.exp(-Math.pow(i - j, 2) / (2 * h * h));
+      sumW += w;
+      sumSW += w * data[j].close;
+    }
+
+    base[i] = sumSW / sumW;
+    maeArr[i] = Math.abs(data[i].close - base[i]!);
+  }
+
+  // Pass 2: Smooth MAE and calculate bands + signals
+  for (let i = 0; i < data.length; i++) {
+    const t = i;
+    let sumW = 0;
+    let sumMAE = 0;
+
+    const start = Math.max(0, i - windowSize);
+    for (let j = start; j <= i; j++) {
+      const w = Math.exp(-Math.pow(i - j, 2) / (2 * h * h));
+      sumW += w;
+      sumMAE += w * maeArr[j];
+    }
+
+    const smoothedMAE = sumMAE / sumW;
+    upper[i] = base[i]! + smoothedMAE * mult;
+    lower[i] = base[i]! - smoothedMAE * mult;
+    
+    // Signal Generation
+    // Buy Signal: Close crosses from outside below the Lower Band back inside above the Lower Band (close > lower and prevClose < prevLower)
+    // Sell Signal: Close crosses from outside above the Upper Band back inside below the Upper Band (close < upper and prevClose > prevUpper)
+    if (i > 0) {
+      if (data[i].close > lower[i]! && data[i-1].close < lower[i-1]!) {
+        buySignal[i] = true;
+      }
+      if (data[i].close < upper[i]! && data[i-1].close > upper[i-1]!) {
+        sellSignal[i] = true;
+      }
+    }
+  }
+
+  return { base, upper, lower, buySignal, sellSignal };
+}
+
+
 

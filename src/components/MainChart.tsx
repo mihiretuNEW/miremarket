@@ -12,7 +12,6 @@ interface MainChartProps {
   scrollOffset: number;
   onZoomIn: () => void;
   onZoomOut: () => void;
-  isSwapped?: boolean;
 }
 
 export function MainChart({ data, settings, zoomLevel, scrollOffset, onZoomIn, onZoomOut }: MainChartProps) {

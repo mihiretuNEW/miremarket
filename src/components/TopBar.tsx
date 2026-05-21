@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Menu, Activity, Settings, Wifi, WifiOff, ArrowUpDown } from 'lucide-react';
-import { HorizontalLineToolbar } from './HorizontalLineTools';
 
 function LiveClock() {
   const [time, setTime] = useState(new Date());
@@ -40,8 +39,6 @@ interface TopBarProps {
   setActiveIndicators: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   indicatorSettings: IndicatorSettings;
   setIndicatorSettings: React.Dispatch<React.SetStateAction<IndicatorSettings>>;
-  isSwapped: boolean;
-  setIsSwapped: (s: boolean) => void;
 }
 
 export function TopBar({ 
@@ -54,9 +51,7 @@ export function TopBar({
   activeIndicators,
   setActiveIndicators,
   indicatorSettings,
-  setIndicatorSettings,
-  isSwapped,
-  setIsSwapped
+  setIndicatorSettings
 }: TopBarProps) {
   const [showIndicators, setShowIndicators] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -108,21 +103,6 @@ export function TopBar({
       </div>
 
       <div className="flex items-center gap-3">
-        <HorizontalLineToolbar symbol={selectedSymbol} />
-        <button 
-          onClick={() => setIsSwapped(!isSwapped)}
-          className={cn(
-            "flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors border shadow-sm",
-            isSwapped 
-              ? "bg-purple-600/20 border-purple-500/50 text-purple-200 hover:bg-purple-600/30" 
-              : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:bg-neutral-800"
-          )}
-          title="Swap Main and Sub Chart"
-        >
-          <ArrowUpDown className="w-4 h-4" />
-          Swap View
-        </button>
-
         <div className="relative">
           <button 
             onClick={() => setShowIndicators(!showIndicators)}
@@ -133,7 +113,7 @@ export function TopBar({
           </button>
 
           {showIndicators && (
-            <div className="absolute right-0 top-full mt-2 w-48 bg-neutral-900 border border-neutral-800 rounded-lg shadow-xl z-50 py-1">
+            <div className="absolute right-0 top-full mt-2 w-48 max-h-80 overflow-y-auto bg-neutral-900 border border-neutral-800 rounded-lg shadow-xl z-50 py-1">
               {Object.keys(activeIndicators).map(ind => (
                 <button
                   key={ind}
@@ -152,6 +132,11 @@ export function TopBar({
                      ind === 'MAENV' ? 'Moving Average Envelope' :
                      ind === 'TWOPOLE' ? 'Two-Pole Oscillator' :
                      ind === 'MSMT' ? 'Market Structure Trend Matrix' :
+                     ind === 'UTBOT' ? 'UT Bot Alerts' :
+                     ind === 'NWENV' ? 'Nadaraya-Watson Envelope' :
+                     ind === 'WAE' ? 'Waddah Attar Explosion' :
+                     ind === 'GTA' ? 'GTA Trend Filter' :
+                     ind === 'SCALPING' ? 'Simple Scalping Ribbon' :
                      ind === 'PSAR' ? 'Parabolic SAR' : ind}
                   </span>
                   {activeIndicators[ind] && <div className="w-2 h-2 rounded-full bg-blue-500" />}
@@ -250,6 +235,24 @@ function SettingsModal({ settings, setSettings, onClose }: any) {
                 </div>
 
                 <div className="space-y-2 border border-neutral-800 p-3 rounded bg-neutral-900/50">
+                  <h4 className="text-sm font-medium text-cyan-400">GTA Trend Filter</h4>
+                  <div className="grid grid-cols-1 gap-2">
+                    <label className="text-xs text-neutral-400 flex justify-between items-center">Long EMA <input type="number" value={settings.GTA_LONG} onChange={e => update('GTA_LONG', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
+                    <label className="text-xs text-neutral-400 flex justify-between items-center">Mid EMA <input type="number" value={settings.GTA_MID} onChange={e => update('GTA_MID', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
+                    <label className="text-xs text-neutral-400 flex justify-between items-center">Short EMA <input type="number" value={settings.GTA_SHORT} onChange={e => update('GTA_SHORT', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
+                  </div>
+                </div>
+
+                <div className="space-y-2 border border-neutral-800 p-3 rounded bg-neutral-900/50">
+                  <h4 className="text-sm font-medium text-lime-400">Simple Scalping</h4>
+                  <div className="grid grid-cols-1 gap-2">
+                    <label className="text-xs text-neutral-400 flex justify-between items-center">Lookback EMA <input type="number" step="0.1" value={settings.SCALPING_LOOKBACK} onChange={e => update('SCALPING_LOOKBACK', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
+                    <label className="text-xs text-neutral-400 flex justify-between items-center">Signal EMA <input type="number" step="0.1" value={settings.SCALPING_EMA} onChange={e => update('SCALPING_EMA', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
+                    <label className="text-xs text-neutral-400 flex justify-between items-center">Trailing HL <input type="number" step="0.1" value={settings.SCALPING_LOOKBACK_HL} onChange={e => update('SCALPING_LOOKBACK_HL', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
+                  </div>
+                </div>
+
+                <div className="space-y-2 border border-neutral-800 p-3 rounded bg-neutral-900/50">
                   <h4 className="text-sm font-medium text-pink-400">ATR Fib Envelopes</h4>
                   <div className="grid grid-cols-1 gap-2">
                     <label className="text-xs text-neutral-400 flex justify-between items-center">WMA Period <input type="number" value={settings.ATRFIB_WMA_PERIOD} onChange={e => update('ATRFIB_WMA_PERIOD', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
@@ -272,6 +275,33 @@ function SettingsModal({ settings, setSettings, onClose }: any) {
                     <label className="text-xs text-neutral-400 flex justify-between items-center">ATR Mult <input type="number" step="0.1" value={settings.MSMT_ATR_MULT} onChange={e => update('MSMT_ATR_MULT', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
                     <label className="text-xs text-neutral-400 flex justify-between items-center">Left Bars <input type="number" value={settings.MSMT_LEFT_BARS} onChange={e => update('MSMT_LEFT_BARS', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
                     <label className="text-xs text-neutral-400 flex justify-between items-center">Right Bars <input type="number" value={settings.MSMT_RIGHT_BARS} onChange={e => update('MSMT_RIGHT_BARS', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
+                  </div>
+                </div>
+
+                <div className="space-y-2 border border-neutral-800 p-3 rounded bg-neutral-900/50">
+                  <h4 className="text-sm font-medium text-[#8b5cf6]">UT Bot Alerts</h4>
+                  <div className="grid grid-cols-1 gap-2">
+                    <label className="text-xs text-neutral-400 flex justify-between items-center">Key Value <input type="number" step="0.1" value={settings.UTBOT_KEYVALUE} onChange={e => update('UTBOT_KEYVALUE', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
+                    <label className="text-xs text-neutral-400 flex justify-between items-center">ATR Period <input type="number" value={settings.UTBOT_ATR_PERIOD} onChange={e => update('UTBOT_ATR_PERIOD', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
+                  </div>
+                </div>
+
+                <div className="space-y-2 border border-neutral-800 p-3 rounded bg-neutral-900/50">
+                  <h4 className="text-sm font-medium text-[#10b981]">Nadaraya-Watson Envelope</h4>
+                  <div className="grid grid-cols-1 gap-2">
+                    <label className="text-xs text-neutral-400 flex justify-between items-center">Bandwidth (h) <input type="number" value={settings.NWENV_H} onChange={e => update('NWENV_H', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
+                    <label className="text-xs text-neutral-400 flex justify-between items-center">Multiplier <input type="number" step="0.1" value={settings.NWENV_MULT} onChange={e => update('NWENV_MULT', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
+                  </div>
+                </div>
+
+                <div className="space-y-2 border border-neutral-800 p-3 rounded bg-neutral-900/50">
+                  <h4 className="text-sm font-medium text-[#a855f7]">Waddah Attar Explosion</h4>
+                  <div className="grid grid-cols-1 gap-2">
+                    <label className="text-xs text-neutral-400 flex justify-between items-center">Sensitivity <input type="number" value={settings.WAE_SENSITIVITY} onChange={e => update('WAE_SENSITIVITY', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
+                    <label className="text-xs text-neutral-400 flex justify-between items-center">Fast EMA <input type="number" value={settings.WAE_FAST} onChange={e => update('WAE_FAST', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
+                    <label className="text-xs text-neutral-400 flex justify-between items-center">Slow EMA <input type="number" value={settings.WAE_SLOW} onChange={e => update('WAE_SLOW', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
+                    <label className="text-xs text-neutral-400 flex justify-between items-center">Channel <input type="number" value={settings.WAE_CHANNEL} onChange={e => update('WAE_CHANNEL', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
+                    <label className="text-xs text-neutral-400 flex justify-between items-center">Multiplier <input type="number" step="0.1" value={settings.WAE_MULT} onChange={e => update('WAE_MULT', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
                   </div>
                 </div>
 

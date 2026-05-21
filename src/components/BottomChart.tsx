@@ -1,7 +1,6 @@
-import { useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { ResponsiveContainer, ComposedChart, Bar, Line, Area, XAxis, YAxis, Tooltip, Scatter, ReferenceLine, Customized } from 'recharts';
-import { CandleData, calculateSMA, calculateRSI, calculateBollingerBands, calculateParabolicSAR, calculateStochRSI, calculateATRFibEnvelopes, calculateMAEnvelope, calculateTwoPole, calculateMSMT } from '../lib/calculators';
-import { HorizontalLinesOverlay, useHLineStore } from './HorizontalLineTools';
+import { CandleData, calculateSMA, calculateRSI, calculateBollingerBands, calculateParabolicSAR, calculateStochRSI, calculateATRFibEnvelopes, calculateMAEnvelope, calculateTwoPole, calculateMSMT, calculateUTBot, calculateNWEnv, calculateWAE } from '../lib/calculators';
 import type { IndicatorSettings } from '../App';
 
 interface BottomChartProps {
@@ -44,21 +43,6 @@ const MSMTOverlay = ({ yAxisMap, width, data }: any) => {
 };
 
 const CustomTooltip = ({ active, payload, label }: any) => {
-  if (active && payload && payload.length) {
-    return (
-      <div className="absolute top-0 left-0 flex flex-wrap gap-x-3 gap-y-1 text-[10px] items-center bg-transparent drop-shadow-md z-[100] max-w-[80vw]">
-         {payload.map((entry: any, index: number) => {
-            if (!entry.name || entry.name.includes('Pocket') || entry.name === 'CandleBody' || entry.name.includes('WMA (Base)')) return null;
-            if (entry.value === null || entry.value === undefined) return null;
-            if (entry.name === 'Candle') {
-              const { open, high, low, close } = entry.payload;
-              return <span key={index} className="text-neutral-300 font-medium">O: {open.toFixed(2)} H: {high.toFixed(2)} L: {low.toFixed(2)} C: {close.toFixed(2)}</span>;
-            }
-            return <span key={index} style={{color: entry.color}}>{entry.name}: {typeof entry.value === 'number' ? entry.value.toFixed(2) : entry.value}</span>;
-         })}
-      </div>
-    );
-  }
   return null;
 }
 
@@ -68,7 +52,17 @@ const CandlestickShape = (props: any) => {
   if (!payload || payload.open === undefined || typeof maxTickValue !== 'number') return null;
 
   const isUp = payload.close >= payload.open;
-  const color = isUp ? '#10b981' : '#ef4444'; 
+  let color = isUp ? '#10b981' : '#ef4444';
+  
+  if (payload.gtaColor !== undefined && payload.gtaColor !== null) {
+    if (payload.gtaColor === 0) {
+      color = '#22c55e'; // Green
+    } else if (payload.gtaColor === 1) {
+      color = '#f97316'; // Orange/Red
+    } else if (payload.gtaColor === 2) {
+      color = '#eab308'; // Yellow
+    }
+  }
   
   const yAxisScale = yAxisHeight / (maxTickValue - minTickValue);
   
@@ -92,30 +86,14 @@ const CandlestickShape = (props: any) => {
   );
 };
 
-export function BottomChart({ data, activeIndicators, settings, zoomLevel, scrollOffset, symbol }: BottomChartProps) {
-  const hlStore = useHLineStore();
+export const BottomChart = React.memo(BottomChartComponent);
 
+function BottomChartComponent({ data, activeIndicators, settings, zoomLevel, scrollOffset, symbol, calcData }: BottomChartProps & { calcData: any }) {
   const chartData = useMemo(() => {
-    if (data.length === 0) return [];
+    if (data.length === 0 || !calcData) return [];
     
-    // Always calculate everything so syncing labels/tooltips is easier
-    const maData = calculateSMA(data.map(d => d.close), settings.MA_PERIOD);
-    const rsiData = calculateRSI(data, settings.RSI_PERIOD);
-    const bbData = calculateBollingerBands(data, settings.BB_PERIOD, settings.BB_MULT);
-    const psarData = calculateParabolicSAR(data, settings.PSAR_STEP, settings.PSAR_MAX);
-    const stochRsiData = calculateStochRSI(data, settings.STOCH_RSI_PERIOD, settings.STOCH_PERIOD, settings.STOCH_K, settings.STOCH_D);
-    const atrFibData = activeIndicators.ATRFIBENV 
-      ? calculateATRFibEnvelopes(data, settings.ATRFIB_WMA_PERIOD, settings.ATRFIB_ATR_PERIOD, settings.ATRFIB_MULTIPLIER)
-      : null;
-    const maEnvData = activeIndicators.MAENV
-      ? calculateMAEnvelope(data, settings.MAENV_PERIOD, settings.MAENV_PERCENT)
-      : null;
-    const twoPoleData = activeIndicators.TWOPOLE
-      ? calculateTwoPole(data, settings.TWOPOLE_FILTER_LENGTH)
-      : null;
-    const msmtData = activeIndicators.MSMT
-      ? calculateMSMT(data, settings.MSMT_ATR_LENGTH, settings.MSMT_ATR_MULT, settings.MSMT_LEFT_BARS, settings.MSMT_RIGHT_BARS)
-      : null;
+    // Unpack from worker result
+    const { gtaData, scalpingData, maData, rsiData, bbData, psarData, stochRsiData, atrFibData, maEnvData, twoPoleData, msmtData, utbotData, nwenvData, waeData } = calcData;
 
     const startIndex = Math.max(0, data.length - zoomLevel - scrollOffset);
     const endIndex = Math.max(0, data.length - scrollOffset);
@@ -160,6 +138,50 @@ export function BottomChart({ data, activeIndicators, settings, zoomLevel, scrol
       let msmtChochType = null;
       let msmtTargets = [];
       
+      let utbotTs = null;
+      let utbotBuyArrow = null;
+      let utbotSellArrow = null;
+      
+      let nwenvBase = null;
+      let nwenvUpper = null;
+      let nwenvLower = null;
+      let nwenvBuyArrow = null;
+      let nwenvSellArrow = null;
+
+      let waeBuyArrow = null;
+      let waeSellArrow = null;
+
+      if (utbotData) {
+        utbotTs = utbotData.trailingStop[i];
+        if (utbotData.buySignal[i]) {
+          utbotBuyArrow = d.low - ((d.high - d.low) * 0.15);
+        }
+        if (utbotData.sellSignal[i]) {
+          utbotSellArrow = d.high + ((d.high - d.low) * 0.15);
+        }
+      }
+      
+      if (nwenvData) {
+        nwenvBase = nwenvData.base[i];
+        nwenvUpper = nwenvData.upper[i];
+        nwenvLower = nwenvData.lower[i];
+        if (nwenvData.buySignal[i]) {
+          nwenvBuyArrow = nwenvLower! - ((d.high - d.low) * 0.2);
+        }
+        if (nwenvData.sellSignal[i]) {
+          nwenvSellArrow = nwenvUpper! + ((d.high - d.low) * 0.2);
+        }
+      }
+
+      if (waeData) {
+        if (waeData.waeBuySignal[i]) {
+          waeBuyArrow = d.low - ((d.high - d.low) * 0.25);
+        }
+        if (waeData.waeSellSignal[i]) {
+          waeSellArrow = d.high + ((d.high - d.low) * 0.25);
+        }
+      }
+
       if (msmtData) {
         if (msmtData.trailingLine[i] !== null) {
           if (msmtData.trailingDir[i] === 1) {
@@ -175,6 +197,35 @@ export function BottomChart({ data, activeIndicators, settings, zoomLevel, scrol
           msmtChochArrow = msmtChochType === 'bull' ? d.low - ((d.high - d.low) * 0.15) : d.high + ((d.high - d.low) * 0.15);
         }
         msmtTargets = msmtData.activeTargets[i] || [];
+      }
+
+      let gtaColor = gtaData?.[i]?.colorState;
+      let gtaBuyArrow = gtaData?.[i]?.buyArrow;
+      let gtaSellArrow = gtaData?.[i]?.sellArrow;
+      
+      let ribbonColor = scalpingData?.[i]?.ribbonColor;
+      
+      let execSL = null;
+      let execTP = null;
+      
+      if (activeIndicators.GTA && activeIndicators.SCALPING) {
+        if (gtaBuyArrow !== null && ribbonColor === 'green' && gtaColor === 0) {
+          const lowRange = data.slice(Math.max(0, i - 3), i + 1).map(x => x.low);
+          const sl = Math.min(...lowRange);
+          const entry = d.close;
+          const risk = entry - sl;
+          const tp = entry + risk * 1.5;
+          execSL = sl;
+          execTP = tp;
+        } else if (gtaSellArrow !== null && ribbonColor === 'red' && gtaColor === 1) {
+          const highRange = data.slice(Math.max(0, i - 3), i + 1).map(x => x.high);
+          const sl = Math.max(...highRange);
+          const entry = d.close;
+          const risk = sl - entry;
+          const tp = entry - risk * 1.5;
+          execSL = sl;
+          execTP = tp;
+        }
       }
 
       const flatTargets: Record<string, number> = {};
@@ -220,7 +271,22 @@ export function BottomChart({ data, activeIndicators, settings, zoomLevel, scrol
         msmtAreaDown,
         msmtChochArrow,
         msmtChochType,
-        msmtTargets
+        msmtTargets,
+        utbotTs,
+        utbotBuyArrow,
+        utbotSellArrow,
+        nwenvBase,
+        nwenvUpper,
+        nwenvLower,
+        nwenvBuyArrow,
+        nwenvSellArrow,
+        execSL,
+        execTP,
+        gtaColor,
+        gtaBuyArrow,
+        gtaSellArrow,
+        waeBuyArrow,
+        waeSellArrow
       };
     });
 
@@ -232,12 +298,16 @@ export function BottomChart({ data, activeIndicators, settings, zoomLevel, scrol
          fibUpper50: null, fibUpper618: null, fibUpper786: null, fibLower50: null, fibLower618: null, fibLower786: null, fibWmaBull: null, fibWmaBear: null, fibWma: null,
          envUpper: null, envLower: null,
          tpBullArrow: null, tpBearArrow: null, tpInv: null, tpInvX: null,
-         msmtTrailingUp: null, msmtTrailingDown: null, msmtAreaUp: null, msmtAreaDown: null, msmtChochArrow: null, msmtChochType: null, msmtTargets: []
+         msmtTrailingUp: null, msmtTrailingDown: null, msmtAreaUp: null, msmtAreaDown: null, msmtChochArrow: null, msmtChochType: null, msmtTargets: [],
+         utbotTs: null, utbotBuyArrow: null, utbotSellArrow: null,
+         nwenvBase: null, nwenvUpper: null, nwenvLower: null, nwenvBuyArrow: null, nwenvSellArrow: null,
+         waeBuyArrow: null, waeSellArrow: null,
+         execSL: null, execTP: null, gtaColor: null, gtaBuyArrow: null, gtaSellArrow: null
        } as any);
     }
 
     return sliced;
-  }, [data, activeIndicators, settings, zoomLevel, scrollOffset]);
+  }, [data, activeIndicators, settings, zoomLevel, scrollOffset, calcData]);
 
   if (chartData.length === 0) {
     return <div className="w-full h-full flex items-center justify-center text-neutral-600 text-sm">Loading ticks...</div>;
@@ -294,7 +364,7 @@ export function BottomChart({ data, activeIndicators, settings, zoomLevel, scrol
   const yDomain = [minLow - padding, maxHigh + padding];
 
   return (
-    <div className={`w-full h-full relative ${hlStore.drawMode ? 'cursor-crosshair' : ''}`}>
+    <div className="w-full h-full relative">
       <div className="absolute top-2 left-2 z-20 flex items-center gap-2">
         <span className="text-[9px] font-bold text-neutral-500 uppercase tracking-wider bg-neutral-900/50 px-2 py-0.5 rounded">
           Price + Indicators
@@ -329,7 +399,7 @@ export function BottomChart({ data, activeIndicators, settings, zoomLevel, scrol
           <YAxis yAxisId="percent" orientation="right" tick={false} stroke="transparent" domain={[0, 100]} width={0} />
 
           <Tooltip 
-            cursor={{ stroke: '#555', strokeWidth: 1, strokeDasharray: '3 3' }}
+            cursor={false}
             position={{ y: 0, x: 2 }}
             content={<CustomTooltip />}
           />
@@ -423,9 +493,6 @@ export function BottomChart({ data, activeIndicators, settings, zoomLevel, scrol
               </>
           )}
 
-          {/* Horizontal Lines */}
-          <Customized component={<HorizontalLinesOverlay symbol={symbol} />} />
-
           <Customized component={<MSMTOverlay data={chartData} />} />
 
           {activeIndicators.TWOPOLE && (
@@ -462,6 +529,61 @@ export function BottomChart({ data, activeIndicators, settings, zoomLevel, scrol
                   ))}
                   </>
               )}
+              </>
+          )}
+
+          {activeIndicators.UTBOT && (
+              <>
+              {settings.visibility.utbotTrailingStop && (
+                  <Line yAxisId="main" type="stepAfter" dataKey="utbotTs" stroke={settings.colors.utbotTrailingStop || "#8b5cf6"} strokeWidth={2} dot={false} connectNulls={false} isAnimationActive={false} name="UT Bot TS" />
+              )}
+              {settings.visibility.utbotSignals && (
+                  <>
+                  <Scatter yAxisId="main" dataKey="utbotBuyArrow" shape={(props: any) => props.payload.utbotBuyArrow === null ? null : <text x={props.cx} y={props.cy} fill={settings.colors.utbotBuy || "#22c55e"} fontSize={12} fontWeight="bold" textAnchor="middle" alignmentBaseline="text-before-edge">BUY</text>} isAnimationActive={false} />
+                  <Scatter yAxisId="main" dataKey="utbotSellArrow" shape={(props: any) => props.payload.utbotSellArrow === null ? null : <text x={props.cx} y={props.cy} fill={settings.colors.utbotSell || "#ef4444"} fontSize={12} fontWeight="bold" textAnchor="middle" alignmentBaseline="text-after-edge">SELL</text>} isAnimationActive={false} />
+                  </>
+              )}
+              </>
+          )}
+
+          {activeIndicators.NWENV && (
+              <>
+              {settings.visibility.nwenvBands && (
+                  <>
+                  <Line yAxisId="main" type="monotone" dataKey="nwenvUpper" stroke={settings.colors.nwenvUpper || "#10b981"} strokeWidth={1} dot={false} connectNulls={false} isAnimationActive={false} name="NW Upper" />
+                  <Line yAxisId="main" type="monotone" dataKey="nwenvLower" stroke={settings.colors.nwenvLower || "#ef4444"} strokeWidth={1} dot={false} connectNulls={false} isAnimationActive={false} name="NW Lower" />
+                  </>
+              )}
+              {settings.visibility.nwenvBase && (
+                  <Line yAxisId="main" type="monotone" dataKey="nwenvBase" stroke={settings.colors.nwenvBase || "#3b82f6"} strokeWidth={2} dot={false} connectNulls={false} isAnimationActive={false} name="NW Base" />
+              )}
+              {settings.visibility.nwenvSignals && (
+                  <>
+                  <Scatter yAxisId="main" dataKey="nwenvBuyArrow" shape={(props: any) => props.payload.nwenvBuyArrow === null ? null : <text x={props.cx} y={props.cy} fill={settings.colors.nwenvUpper || "#10b981"} fontSize={16} fontWeight="bold" textAnchor="middle" alignmentBaseline="text-before-edge">▲</text>} isAnimationActive={false} />
+                  <Scatter yAxisId="main" dataKey="nwenvSellArrow" shape={(props: any) => props.payload.nwenvSellArrow === null ? null : <text x={props.cx} y={props.cy} fill={settings.colors.nwenvLower || "#ef4444"} fontSize={16} fontWeight="bold" textAnchor="middle" alignmentBaseline="text-after-edge">▼</text>} isAnimationActive={false} />
+                  </>
+              )}
+              </>
+          )}
+
+          {activeIndicators.WAE && settings.visibility.waeSignals && (
+              <>
+                  <Scatter yAxisId="main" dataKey="waeBuyArrow" shape={(props: any) => props.payload.waeBuyArrow === null ? null : <text x={props.cx} y={props.cy} fill={settings.colors.waeGreen || "#22c55e"} fontSize={20} fontWeight="bold" textAnchor="middle" alignmentBaseline="text-before-edge">↑</text>} isAnimationActive={false} />
+                  <Scatter yAxisId="main" dataKey="waeSellArrow" shape={(props: any) => props.payload.waeSellArrow === null ? null : <text x={props.cx} y={props.cy} fill={settings.colors.waeRed || "#ef4444"} fontSize={20} fontWeight="bold" textAnchor="middle" alignmentBaseline="text-after-edge">↓</text>} isAnimationActive={false} />
+              </>
+          )}
+
+          {activeIndicators.GTA && (
+              <>
+                <Scatter yAxisId="main" dataKey="gtaBuyArrow" shape={(props: any) => props.payload.gtaBuyArrow === null ? null : <text x={props.cx} y={props.cy} fill="#3b82f6" fontSize={16} fontWeight="bold" textAnchor="middle" alignmentBaseline="text-before-edge">▲</text>} isAnimationActive={false} />
+                <Scatter yAxisId="main" dataKey="gtaSellArrow" shape={(props: any) => props.payload.gtaSellArrow === null ? null : <text x={props.cx} y={props.cy} fill="#a855f7" fontSize={16} fontWeight="bold" textAnchor="middle" alignmentBaseline="text-after-edge">▼</text>} isAnimationActive={false} />
+              </>
+          )}
+          
+          {activeIndicators.GTA && activeIndicators.SCALPING && (
+              <>
+                <Line yAxisId="main" type="stepAfter" dataKey="execSL" stroke="#ef4444" strokeWidth={2} strokeDasharray="3 3" dot={false} connectNulls={false} isAnimationActive={false} name="Stop Loss" />
+                <Line yAxisId="main" type="stepAfter" dataKey="execTP" stroke="#22c55e" strokeWidth={2} strokeDasharray="3 3" dot={false} connectNulls={false} isAnimationActive={false} name="Take Profit" />
               </>
           )}
           
