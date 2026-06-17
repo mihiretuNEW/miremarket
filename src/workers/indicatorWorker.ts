@@ -18,7 +18,8 @@ import {
   calculateSimpleScalping,
   calculateTrendlinesWithBreaks,
   calculateOrderBlocks,
-  calculateCorrelatedSineOscillator
+  calculateCorrelatedSineOscillator,
+  calculateVelocity
 } from '../lib/calculators';
 
 self.onmessage = (e: MessageEvent) => {
@@ -81,6 +82,7 @@ self.onmessage = (e: MessageEvent) => {
     if (oscType === 'STDSMI') indData = calculateStandardSMI(data, settings.STDSMI_Q, settings.STDSMI_R, settings.STDSMI_S, settings.STDSMI_SIGNAL);
     if (oscType === 'TWOPOLE') indData = calculateTwoPole(data, settings.TWOPOLE_FILTER_LENGTH);
     if (oscType === 'WAE') indData = calculateWAE(data, settings.WAE_SENSITIVITY, settings.WAE_FAST, settings.WAE_SLOW, settings.WAE_CHANNEL, settings.WAE_MULT);
+    if (oscType === 'VELOCITY') indData = calculateVelocity(data, settings.VELOCITY_MOM, settings.VELOCITY_SMOOTH, settings.VELOCITY_ATR);
     if (oscType === 'SCALPING') {
       const scalpingData = calculateSimpleScalping(data, settings.SCALPING_LOOKBACK, settings.SCALPING_EMA, settings.SCALPING_LOOKBACK_HL);
       indData = scalpingData.map((d: any) => ({

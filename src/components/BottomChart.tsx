@@ -204,6 +204,8 @@ function BottomChartComponent({ data, activeIndicators, settings, zoomLevel, scr
       let gtaSellArrow = gtaData?.[i]?.sellArrow;
       
       let ribbonColor = scalpingData?.[i]?.ribbonColor;
+      let ribbonBuyArrow = scalpingData?.[i]?.ribbonBuyArrow ?? null;
+      let ribbonSellArrow = scalpingData?.[i]?.ribbonSellArrow ?? null;
       
       let execSL = null;
       let execTP = null;
@@ -298,6 +300,9 @@ function BottomChartComponent({ data, activeIndicators, settings, zoomLevel, scr
         gtaSellArrow,
         waeBuyArrow,
         waeSellArrow,
+        ribbonColor,
+        ribbonBuyArrow,
+        ribbonSellArrow,
         tlUpper: trendlinesBreakData?.[i]?.upper ?? null,
         tlLower: trendlinesBreakData?.[i]?.lower ?? null,
         csoBuySignal,
@@ -333,6 +338,7 @@ function BottomChartComponent({ data, activeIndicators, settings, zoomLevel, scr
          nwenvBase: null, nwenvUpper: null, nwenvLower: null, nwenvBuyArrow: null, nwenvSellArrow: null,
          waeBuyArrow: null, waeSellArrow: null,
          execSL: null, execTP: null, gtaColor: null, gtaBuyArrow: null, gtaSellArrow: null,
+         ribbonColor: null, ribbonBuyArrow: null, ribbonSellArrow: null,
          tlUpper: null, tlLower: null,
          csoBuySignal: null, csoSellSignal: null
        } as any;
@@ -344,6 +350,68 @@ function BottomChartComponent({ data, activeIndicators, settings, zoomLevel, scr
 
     return sliced;
   }, [data, activeIndicators, settings, zoomLevel, scrollOffset, calcData]);
+
+  const visibleSNR = useMemo(() => {
+    if (!activeIndicators.SNR || chartData.length === 0) return [];
+    
+    // Filter out dummy elements that have null high/low
+    const validData = chartData.filter((d: any) => d.high !== null && d.low !== null);
+    if (validData.length === 0) return [];
+
+    const highs: number[] = [];
+    const lows: number[] = [];
+    
+    // Window length dynamically scales to how many candles are visible.
+    // Ensure we capture prominent pivots relative to the zoom level.
+    const windowLen = Math.max(8, Math.floor(validData.length / 15));
+
+    for (let i = windowLen; i < validData.length - windowLen; i++) {
+        let isHigh = true;
+        let isLow = true;
+        for (let j = i - windowLen; j <= i + windowLen; j++) {
+           if (j === i) continue;
+           if (validData[j].high > validData[i].high) isHigh = false;
+           if (validData[j].low < validData[i].low) isLow = false;
+        }
+        if (isHigh) highs.push(validData[i].high);
+        if (isLow) lows.push(validData[i].low);
+    }
+    
+    // Sort to give precedence to clearest extremes 
+    highs.sort((a,b) => b - a); // highest first
+    lows.sort((a,b) => a - b); // lowest first
+    
+    const absMax = Math.max(...validData.map((d: any) => d.high));
+    const absMin = Math.min(...validData.map((d: any) => d.low));
+    const threshold = (absMax - absMin) * 0.05; // 5% minimum distance
+    
+    const maxSides = validData.length > 150 ? 2 : 1; // 2-4 lines total based on zoom
+    const result: {price: number, type: 'support'|'resistance'}[] = [];
+    
+    for(const h of highs) {
+       if (result.filter(r => r.type === 'resistance').length >= maxSides) break;
+       if (!result.some(r => Math.abs(r.price - h) < threshold)) {
+           result.push({ price: h, type: 'resistance' });
+       }
+    }
+    
+    for(const l of lows) {
+       if (result.filter(r => r.type === 'support').length >= maxSides) break;
+       if (!result.some(r => Math.abs(r.price - l) < threshold)) {
+           result.push({ price: l, type: 'support' });
+       }
+    }
+    
+    // Fallback to absolute max/min if no pivots were found
+    if (result.filter(r => r.type === 'resistance').length === 0) {
+        result.push({ price: absMax, type: 'resistance' });
+    }
+    if (result.filter(r => r.type === 'support').length === 0) {
+        result.push({ price: absMin, type: 'support' });
+    }
+    
+    return result;
+  }, [chartData, activeIndicators.SNR]);
 
   if (chartData.length === 0) {
     return <div className="w-full h-full flex items-center justify-center text-neutral-600 text-sm">Loading ticks...</div>;
@@ -488,6 +556,18 @@ function BottomChartComponent({ data, activeIndicators, settings, zoomLevel, scr
               isAnimationActive={false} 
           />
           
+          {activeIndicators.SNR && visibleSNR.map((level: any, idx: number) => (
+            <ReferenceLine 
+              key={`snr-${idx}`} 
+              yAxisId="main" 
+              y={level.price} 
+              stroke="#ffffff" 
+              strokeWidth={3} 
+              opacity={1}
+              label={{ position: 'right', value: level.type.toUpperCase(), fill: '#ffffff', fontSize: 10, offset: 5, fontWeight: 'bold' }} 
+            />
+          ))}
+
           {activeIndicators.MA && settings.visibility.ma && <Line yAxisId="main" type="monotone" dataKey="ma" stroke={settings.colors.ma} strokeWidth={1.5} dot={false} isAnimationActive={false} name="MA" />}
           {activeIndicators.RSI && settings.visibility.rsi && <Line yAxisId="percent" type="monotone" dataKey="rsi" stroke={settings.colors.rsi} strokeWidth={1.2} dot={false} isAnimationActive={false} name="RSI" />}
           {activeIndicators.BB && (
@@ -610,11 +690,11 @@ function BottomChartComponent({ data, activeIndicators, settings, zoomLevel, scr
           )}
 
           {activeIndicators.OB && Array.from({length: settings.OB_MAX_BULL}).map((_, j) => (
-             <Area key={`ob-bull-${j}`} yAxisId="main" type="linear" dataKey={`obBull${j}`} stroke="none" fill="#10b981" fillOpacity={0.15} connectNulls={false} isAnimationActive={false} />
+             <Area key={`ob-bull-${j}`} yAxisId="main" type="linear" dataKey={`obBull${j}`} stroke="#10b981" strokeWidth={2} strokeOpacity={1} fill="#10b981" fillOpacity={0.8} connectNulls={false} isAnimationActive={false} />
           ))}
 
           {activeIndicators.OB && Array.from({length: settings.OB_MAX_BEAR}).map((_, j) => (
-             <Area key={`ob-bear-${j}`} yAxisId="main" type="linear" dataKey={`obBear${j}`} stroke="none" fill="#ef4444" fillOpacity={0.15} connectNulls={false} isAnimationActive={false} />
+             <Area key={`ob-bear-${j}`} yAxisId="main" type="linear" dataKey={`obBear${j}`} stroke="#ef4444" strokeWidth={2} strokeOpacity={1} fill="#ef4444" fillOpacity={0.8} connectNulls={false} isAnimationActive={false} />
           ))}
 
           {activeIndicators.CSO && settings.CSO_SHOW_SIGNALS && (
@@ -635,6 +715,13 @@ function BottomChartComponent({ data, activeIndicators, settings, zoomLevel, scr
               <>
                 <Line yAxisId="main" type="stepAfter" dataKey="execSL" stroke="#ef4444" strokeWidth={2} strokeDasharray="3 3" dot={false} connectNulls={false} isAnimationActive={false} name="Stop Loss" />
                 <Line yAxisId="main" type="stepAfter" dataKey="execTP" stroke="#22c55e" strokeWidth={2} strokeDasharray="3 3" dot={false} connectNulls={false} isAnimationActive={false} name="Take Profit" />
+              </>
+          )}
+
+          {activeIndicators.SCALPING && (
+              <>
+              <Scatter yAxisId="main" dataKey="ribbonBuyArrow" shape={(props: any) => props.payload.ribbonBuyArrow === null ? null : <text x={props.cx} y={props.cy} fill="#10b981" fontSize={16} fontWeight="bold" textAnchor="middle" alignmentBaseline="text-before-edge">▲</text>} isAnimationActive={false} />
+              <Scatter yAxisId="main" dataKey="ribbonSellArrow" shape={(props: any) => props.payload.ribbonSellArrow === null ? null : <text x={props.cx} y={props.cy} fill="#ef4444" fontSize={16} fontWeight="bold" textAnchor="middle" alignmentBaseline="text-after-edge">▼</text>} isAnimationActive={false} />
               </>
           )}
 

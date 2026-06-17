@@ -1,6 +1,7 @@
 import { ASSET_PAIRS } from '../lib/derivConfig';
 import { cn } from '../lib/utils';
 import { ChevronLeft, BarChart3 } from 'lucide-react';
+import { DisciplineTracker } from './DisciplineTracker';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -26,38 +27,27 @@ export function Sidebar({ isOpen, setIsOpen, selected, onSelect }: SidebarProps)
       </div>
       
       <div className="flex-1 overflow-y-auto p-2 scrollbar-hide">
-        <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2 px-2 mt-2">
-          Volatility Indices
-        </div>
-        {ASSET_PAIRS.filter(a => a.type === 'Volatility').map(asset => (
-          <button
-            key={asset.symbol}
-            onClick={() => onSelect(asset.symbol)}
-            className={cn(
-              "w-full text-left px-3 py-2 text-sm rounded transition-colors mb-1",
-              selected === asset.symbol ? "bg-blue-600/20 text-blue-500 font-medium" : "text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
-            )}
-          >
-            {asset.name}
-          </button>
-        ))}
-
-        <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2 px-2 mt-4">
-          Jump Indices
-        </div>
-        {ASSET_PAIRS.filter(a => a.type === 'Jump').map(asset => (
-          <button
-            key={asset.symbol}
-            onClick={() => onSelect(asset.symbol)}
-            className={cn(
-              "w-full text-left px-3 py-2 text-sm rounded transition-colors mb-1",
-              selected === asset.symbol ? "bg-blue-600/20 text-blue-500 font-medium" : "text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
-            )}
-          >
-            {asset.name}
-          </button>
+        {['Jump', 'Volatility', 'Forex'].map((type) => (
+          <div key={type}>
+            <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2 px-2 mt-4 first:mt-2">
+              {type}
+            </div>
+            {ASSET_PAIRS.filter(a => a.type === type).map(asset => (
+              <button
+                key={asset.symbol}
+                onClick={() => onSelect(asset.symbol)}
+                className={cn(
+                  "w-full text-left px-3 py-2 text-sm rounded transition-colors mb-1",
+                  selected === asset.symbol ? "bg-blue-600/20 text-blue-500 font-medium" : "text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
+                )}
+              >
+                {asset.name}
+              </button>
+            ))}
+          </div>
         ))}
       </div>
+      <DisciplineTracker />
     </div>
   );
 }

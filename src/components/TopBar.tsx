@@ -18,7 +18,7 @@ function LiveClock() {
   });
 
   return (
-    <div className="text-emerald-400 font-mono text-[11px] font-medium bg-neutral-900 border border-neutral-800 px-2 py-1 rounded hidden sm:block">
+    <div className="text-neutral-300 font-mono text-xs font-semibold tracking-wide">
       {formatter.format(time)}
     </div>
   );
@@ -56,60 +56,107 @@ export function TopBar({
   const [showIndicators, setShowIndicators] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
-  const assetName = ASSET_PAIRS.find(a => a.symbol === selectedSymbol)?.name || selectedSymbol;
+  const asset = ASSET_PAIRS.find(a => a.symbol === selectedSymbol);
+  const assetName = asset?.name || selectedSymbol;
+  const assetType = asset?.type || '';
+
+  const getAssetSubtitle = (name: string, type: string) => {
+    if (type === 'Volatility' || type === 'Jump') return 'Synthetic Indices';
+    if (name === 'XAU/USD') return 'Gold / US Dollar';
+    
+    const currencyNames: Record<string, string> = {
+      'AUD': 'Australian Dollar',
+      'CAD': 'Canadian Dollar',
+      'CHF': 'Swiss Franc',
+      'EUR': 'Euro',
+      'GBP': 'British Pound',
+      'JPY': 'Japanese Yen',
+      'NZD': 'New Zealand Dollar',
+      'USD': 'US Dollar'
+    };
+    
+    if (type === 'Forex' && name.length === 7 && name[3] === '/') {
+      const base = name.substring(0, 3);
+      const quote = name.substring(4, 7);
+      if (currencyNames[base] && currencyNames[quote]) {
+        return `${currencyNames[base]} / ${currencyNames[quote]}`;
+      }
+    }
+    return type;
+  };
+
+  const assetSubtitle = getAssetSubtitle(assetName, assetType);
 
   const toggleIndicator = (ind: string) => {
     setActiveIndicators(prev => ({ ...prev, [ind]: !prev[ind] }));
   };
 
   return (
-    <div className="h-14 border-b border-neutral-800 bg-[#0a0a0a] flex items-center justify-between px-4 shrink-0">
-      <div className="flex items-center gap-4">
+    <div className="relative z-50 h-[60px] border-b border-neutral-800 bg-[#0a0a0a] flex items-center justify-between shrink-0 w-full">
+      <div className="flex items-center gap-3 sm:gap-4 h-full overflow-x-auto custom-scrollbar flex-1 pl-4 pr-2">
         {!sidebarOpen && (
-          <button onClick={() => setSidebarOpen(true)} className="p-1 hover:bg-neutral-800 rounded text-neutral-400 hover:text-white">
+          <button onClick={() => setSidebarOpen(true)} className="p-1 hover:bg-neutral-800 rounded text-neutral-400 hover:text-white shrink-0">
             <Menu className="w-5 h-5" />
           </button>
         )}
         
-        <div className="flex items-center gap-2">
-          <span className="font-semibold text-lg text-white">{assetName}</span>
-          {isConnected ? (
-            <Wifi className="w-4 h-4 text-emerald-500" />
-          ) : (
-            <WifiOff className="w-4 h-4 text-red-500" />
-          )}
+        <div className="flex items-center select-none animate-brand-pulse shrink-0 drop-shadow-md">
+          <span className="text-xl font-[700] tracking-tight hidden sm:block">
+            <span className="text-[#00E5FF]">Mihiretu</span>
+            <span className="text-[#00FF88]">View</span>
+          </span>
+          <span className="text-xl font-[700] tracking-tight sm:hidden">
+            <span className="text-[#00E5FF]">M</span>
+            <span className="text-[#00FF88]">V</span>
+          </span>
         </div>
 
-        <div className="h-6 w-px bg-neutral-800 mx-2" />
+        <div className="h-8 w-px bg-neutral-800 mx-1 sm:mx-2 shrink-0" />
 
-        <div className="flex items-center gap-1 bg-neutral-900 p-1 rounded-md">
+        <div className="flex flex-col justify-center min-w-[100px] sm:min-w-[120px] shrink-0">
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-[15px] sm:text-base leading-tight text-white whitespace-nowrap">{assetName}</span>
+            {isConnected ? (
+              <Wifi className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+            ) : (
+              <WifiOff className="w-3.5 h-3.5 text-red-500 shrink-0" />
+            )}
+          </div>
+          <span className="text-[10px] sm:text-[11px] font-medium text-neutral-400 leading-tight whitespace-nowrap">{assetSubtitle}</span>
+        </div>
+
+        <div className="h-8 w-px bg-neutral-800 mx-1 sm:mx-2 shrink-0 hidden sm:block" />
+
+        <div className="shrink-0 items-center hidden sm:flex">
+            <LiveClock />
+        </div>
+
+        <div className="flex items-center gap-1 bg-neutral-900/80 p-0.5 rounded-md border border-neutral-800 shrink-0 ml-2">
           {TIMEFRAMES.map(tf => (
             <button
               key={tf.granularity}
               onClick={() => onSelectTimeframe(tf.granularity)}
               className={cn(
-                "px-3 py-1 text-xs font-medium rounded transition-colors",
+                "px-2 sm:px-2.5 py-1 text-[10px] sm:text-[11px] font-semibold rounded transition-colors",
                 selectedTimeframe === tf.granularity 
-                  ? "bg-neutral-700 text-white" 
-                  : "text-neutral-400 hover:text-neutral-200"
+                  ? "bg-neutral-700/80 text-white shadow-sm" 
+                  : "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/50"
               )}
             >
               {tf.label}
             </button>
           ))}
         </div>
-        
-        <LiveClock />
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 sm:gap-3 shrink-0 ml-2 pr-4 bg-[#0a0a0a]">
         <div className="relative">
           <button 
             onClick={() => setShowIndicators(!showIndicators)}
-            className="flex items-center gap-2 px-3 py-1.5 bg-neutral-900 hover:bg-neutral-800 rounded-md text-sm font-medium transition-colors border border-neutral-800"
+            className="flex items-center gap-2 px-2.5 sm:px-3 py-1.5 bg-neutral-900/80 hover:bg-neutral-800 rounded-md text-xs sm:text-sm font-semibold transition-colors border border-neutral-800 text-neutral-200"
           >
-            <Activity className="w-4 h-4 text-blue-500" />
-            Indicators
+            <Activity className="w-4 h-4 text-[#00E5FF]" />
+            <span className="hidden md:inline">Indicators</span>
           </button>
 
           {showIndicators && (
@@ -135,10 +182,12 @@ export function TopBar({
                      ind === 'UTBOT' ? 'UT Bot Alerts' :
                      ind === 'NWENV' ? 'Nadaraya-Watson Envelope' :
                      ind === 'WAE' ? 'Waddah Attar Explosion' :
+                     ind === 'VELOCITY' ? 'Velocity Confirmation Hist' :
                      ind === 'CSO' ? 'Correlated Sine Oscillator' :
                      ind === 'OB' ? 'Order Block Detector' :
                      ind === 'GTA' ? 'GTA Trend Filter' :
                      ind === 'SCALPING' ? 'Simple Scalping Ribbon' :
+                     ind === 'SNR' ? 'Support & Resistance' :
                      ind === 'TRENDLINES_BREAKS' ? 'Trendlines with Breaks' :
                      ind === 'PSAR' ? 'Parabolic SAR' : ind}
                   </span>
@@ -234,6 +283,13 @@ function SettingsModal({ settings, setSettings, onClose }: any) {
                     <label className="text-xs text-neutral-400 flex justify-between items-center">R Smooth <input type="number" value={settings.STDSMI_R} onChange={e => update('STDSMI_R', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
                     <label className="text-xs text-neutral-400 flex justify-between items-center">S Smooth <input type="number" value={settings.STDSMI_S} onChange={e => update('STDSMI_S', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
                     <label className="text-xs text-neutral-400 flex justify-between items-center">Signal Period <input type="number" value={settings.STDSMI_SIGNAL} onChange={e => update('STDSMI_SIGNAL', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
+                  </div>
+                </div>
+
+                <div className="space-y-2 border border-neutral-800 p-3 rounded bg-neutral-900/50">
+                  <h4 className="text-sm font-medium text-[#f97316]">Support & Resistance</h4>
+                  <div className="grid grid-cols-1 gap-2">
+                    <span className="text-xs text-neutral-500 italic">Dynamically scales to viewport</span>
                   </div>
                 </div>
 
@@ -343,6 +399,15 @@ function SettingsModal({ settings, setSettings, onClose }: any) {
                     <label className="text-xs text-neutral-400 flex justify-between items-center">Slow EMA <input type="number" value={settings.WAE_SLOW} onChange={e => update('WAE_SLOW', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
                     <label className="text-xs text-neutral-400 flex justify-between items-center">Channel <input type="number" value={settings.WAE_CHANNEL} onChange={e => update('WAE_CHANNEL', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
                     <label className="text-xs text-neutral-400 flex justify-between items-center">Multiplier <input type="number" step="0.1" value={settings.WAE_MULT} onChange={e => update('WAE_MULT', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
+                  </div>
+                </div>
+
+                <div className="space-y-2 border border-neutral-800 p-3 rounded bg-neutral-900/50">
+                  <h4 className="text-sm font-medium text-[#10b981]">Velocity Hist</h4>
+                  <div className="grid grid-cols-1 gap-2">
+                    <label className="text-xs text-neutral-400 flex justify-between items-center">Momentum Ln <input type="number" value={settings.VELOCITY_MOM || 7} onChange={e => update('VELOCITY_MOM', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
+                    <label className="text-xs text-neutral-400 flex justify-between items-center">Smoothing <input type="number" value={settings.VELOCITY_SMOOTH || 4} onChange={e => update('VELOCITY_SMOOTH', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
+                    <label className="text-xs text-neutral-400 flex justify-between items-center">ATR Filter <input type="number" value={settings.VELOCITY_ATR || 10} onChange={e => update('VELOCITY_ATR', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
                   </div>
                 </div>
 

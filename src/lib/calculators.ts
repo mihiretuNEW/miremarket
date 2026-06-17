@@ -59,10 +59,13 @@ export function calculateGTATrend(data: CandleData[], longPeriod = 21, midPeriod
 
 export interface SimpleScalpingResult {
   ribbonColor: 'green' | 'red';
+  ribbonBuyArrow: number | null;
+  ribbonSellArrow: number | null;
 }
 
 export function calculateSimpleScalping(data: CandleData[], lookback = 6, emaInput = 4, lookbackHl = 2): SimpleScalpingResult[] {
   const results: SimpleScalpingResult[] = [];
+  if (!data || data.length === 0) return results;
   const closes = data.map(d => d.close);
   const myEma = calculateEMA(closes, emaInput);
   
@@ -71,13 +74,30 @@ export function calculateSimpleScalping(data: CandleData[], lookback = 6, emaInp
   // Assuming a smoothed median based on lookback.
   const mySma = calculateSMA(closes, lookback);
   
+  let prevColor: 'green' | 'red' | null = null;
+
   for (let i = 0; i < data.length; i++) {
     if (isNaN(myEma[i]) || isNaN(mySma[i])) {
-      results.push({ ribbonColor: 'green' }); // Default
+      results.push({ ribbonColor: 'green', ribbonBuyArrow: null, ribbonSellArrow: null }); // Default
       continue;
     }
     const color = myEma[i] > mySma[i] ? 'green' : 'red';
-    results.push({ ribbonColor: color });
+    
+    let ribbonBuyArrow: number | null = null;
+    let ribbonSellArrow: number | null = null;
+    
+    if (prevColor !== null && prevColor !== color) {
+        // Gap gap away from candle
+        const gap = Math.max(data[i].high - data[i].low, data[i].close * 0.0005) * 0.2;
+        if (color === 'green') {
+            ribbonBuyArrow = data[i].low - gap;
+        } else {
+            ribbonSellArrow = data[i].high + gap;
+        }
+    }
+    
+    prevColor = color;
+    results.push({ ribbonColor: color, ribbonBuyArrow, ribbonSellArrow });
   }
   return results;
 }
@@ -1162,4 +1182,43 @@ export function calculateCorrelatedSineOscillator(
   }
 
   return results;
+}
+
+export function calculateVelocity(data: CandleData[], momLength = 7, smoothLength = 4, atrLength = 10) {
+  const normHistogram: (number | null)[] = new Array(data.length).fill(null);
+  const histColor: (number | null)[] = new Array(data.length).fill(null); 
+
+  const closePrices = data.map((d: CandleData) => d.close);
+  const atrValues = calculateATR(data, atrLength);
+  
+  const rawMom = new Array(data.length).fill(0);
+  for (let i = 0; i < data.length; i++) {
+    if (i >= momLength) {
+      rawMom[i] = closePrices[i] - closePrices[i - momLength];
+    }
+  }
+
+  const smoothedMom = calculateEMA(rawMom, smoothLength);
+  
+  for (let i = 0; i < data.length; i++) {
+    const atrValue = atrValues[i];
+    if (atrValue && atrValue > 0 && smoothedMom[i] !== null) {
+      normHistogram[i] = (smoothedMom[i]! / atrValue) * 10;
+    } else {
+      normHistogram[i] = 0;
+    }
+    
+    // Color logic
+    if (i > 0 && normHistogram[i] !== null && normHistogram[i - 1] !== null) {
+      if (normHistogram[i]! > 0) {
+        histColor[i] = normHistogram[i]! > normHistogram[i - 1]! ? 1 : 2; // 1 = Green, 2 = Teal
+      } else {
+        histColor[i] = normHistogram[i]! < normHistogram[i - 1]! ? -1 : -2; // -1 = Red, -2 = Maroon
+      }
+    } else if (normHistogram[i] !== null) {
+      histColor[i] = normHistogram[i]! > 0 ? 1 : -1;
+    }
+  }
+
+  return { normHistogram, histColor };
 }

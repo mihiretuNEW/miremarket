@@ -56,6 +56,9 @@ export type IndicatorSettings = {
   WAE_SLOW: number;
   WAE_CHANNEL: number;
   WAE_MULT: number;
+  VELOCITY_MOM: number;
+  VELOCITY_SMOOTH: number;
+  VELOCITY_ATR: number;
   CSO_PERIOD: number;
   CSO_MULT: number;
   CSO_SHOW_SIGNALS: boolean;
@@ -108,8 +111,10 @@ export default function App() {
     UTBOT: true,
     NWENV: false,
     WAE: true,
+    VELOCITY: true,
     CSO: true,
     OB: true,
+    SNR: true,
     TRENDLINES_BREAKS: true
   };
 
@@ -157,6 +162,9 @@ export default function App() {
     WAE_SLOW: 40,
     WAE_CHANNEL: 20,
     WAE_MULT: 2.0,
+    VELOCITY_MOM: 7,
+    VELOCITY_SMOOTH: 4,
+    VELOCITY_ATR: 10,
     MA_PERIOD: 20,
     RSI_PERIOD: 14,
     BB_PERIOD: 20,
@@ -340,7 +348,7 @@ export default function App() {
     }
   };
 
-  const activeOscillators = ['SMI', 'STOCHRSI', 'ZMACD', 'STDSMI', 'TWOPOLE', 'WAE', 'SCALPING', 'CSO'].filter(k => activeIndicators[k]);
+  const activeOscillators = ['SMI', 'STOCHRSI', 'ZMACD', 'STDSMI', 'TWOPOLE', 'WAE', 'VELOCITY', 'SCALPING', 'CSO'].filter(k => activeIndicators[k]);
 
   return (
     <div className="flex h-screen bg-[#0a0a0a] text-neutral-200 overflow-hidden font-sans">

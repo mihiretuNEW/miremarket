@@ -4,7 +4,7 @@ import { CandleData, calculateSMI, calculateStochRSI, calculateZMACD, calculateS
 import type { IndicatorSettings } from '../App';
 
 interface OscillatorChartProps {
-  type: 'SMI' | 'STOCHRSI' | 'ZMACD' | 'STDSMI' | 'TWOPOLE' | 'WAE' | 'SCALPING' | 'CSO';
+  type: 'SMI' | 'STOCHRSI' | 'ZMACD' | 'STDSMI' | 'TWOPOLE' | 'WAE' | 'VELOCITY' | 'SCALPING' | 'CSO';
   data: CandleData[];
   settings: IndicatorSettings;
   zoomLevel: number;
@@ -60,6 +60,10 @@ function OscillatorChartComponent({ type, data, settings, zoomLevel, scrollOffse
         item.waeExplosion = indData.waeExplosion[i] !== undefined && !isNaN(indData.waeExplosion[i]) ? indData.waeExplosion[i] : null;
         item.waeDeadZone = indData.waeDeadZone[i] !== undefined && !isNaN(indData.waeDeadZone[i]) ? indData.waeDeadZone[i] : null;
       }
+      if (type === 'VELOCITY') {
+        item.velHist = indData.normHistogram[i] !== undefined && !isNaN(indData.normHistogram[i]) ? indData.normHistogram[i] : null;
+        item.velColor = indData.histColor[i] !== undefined && !isNaN(indData.histColor[i]) ? indData.histColor[i] : null;
+      }
       if (type === 'SCALPING') {
         item.val = indData[i]?.val !== undefined ? indData[i].val : null;
         item.color = indData[i]?.color !== undefined ? indData[i].color : null;
@@ -89,6 +93,7 @@ function OscillatorChartComponent({ type, data, settings, zoomLevel, scrollOffse
     STDSMI: { title: 'Standard SMI', domain: ['auto', 'auto'], refs: [40, -40], lines: [{key: 'smi', name: 'SMI', color: settings.colors.stdSmiSmi, vis: settings.visibility.stdSmiSmi}, {key: 'signal', name: 'Signal', color: settings.colors.stdSmiSignal, vis: settings.visibility.stdSmiSignal}] },
     TWOPOLE: { title: 'Two-Pole Oscillator', domain: [-1.0, 1.0], customRefs: [{y: 1, c: '#22c55e'}, {y: 0.5, c: '#eab308'}, {y: 0, c: '#ef4444'}, {y: -0.5, c: '#eab308'}, {y: -1, c: '#22c55e'}], lines: [{key: 'signal', name: 'Signal', color: settings.colors.twopoleSignal, vis: settings.visibility.twopoleSignal}], dynamicHist: true },
     WAE: { title: 'Waddah Attar Explosion', domain: ['auto', 'auto'], lines: [{key: 'waeExplosion', name: 'Explosion', color: settings.colors.waeExplosion, vis: settings.visibility.waeLines}, {key: 'waeDeadZone', name: 'DeadZone', color: settings.colors.waeDeadZone, vis: settings.visibility.waeLines}], waeHist: true },
+    VELOCITY: { title: 'Velocity Confirmation Hist', domain: ['auto', 'auto'], customRefs: [{y: 0, c: '#444'}], velHist: true },
     SCALPING: { title: 'Simple Scalping Ribbon', domain: [-1.5, 1.5], simpleHist: true },
     CSO: { title: 'Correlated Sine Oscillator', domain: [-1.1, 1.1], customRefs: [{y: 0, c: '#444'}], csoHist: true }
   }[type];
@@ -160,6 +165,19 @@ function OscillatorChartComponent({ type, data, settings, zoomLevel, scrollOffse
               {chartData.map((entry: any, index) => (
                 <Cell key={`cell-${index}`} fill={entry.waeColor === 1 ? settings.colors.waeGreen : settings.colors.waeRed} fillOpacity={0.8} />
               ))}
+            </Bar>
+          )}
+
+          {config.velHist && (
+            <Bar yAxisId="ind" dataKey="velHist" fill="#888" isAnimationActive={false} name="Velocity" minPointSize={2}>
+              {chartData.map((entry: any, index) => {
+                let color = "#888";
+                if (entry.velColor === 1) color = "#10b981"; // Bright Green
+                else if (entry.velColor === 2) color = "#14b8a6"; // Teal
+                else if (entry.velColor === -1) color = "#ef4444"; // Bright Red
+                else if (entry.velColor === -2) color = "#7f1d1d"; // Maroon
+                return <Cell key={`cell-${index}`} fill={color} fillOpacity={1} />;
+              })}
             </Bar>
           )}
 
