@@ -234,7 +234,7 @@ export default function App() {
   useEffect(() => { localStorage.setItem('activeIndicators', JSON.stringify(activeIndicators)); }, [activeIndicators]);
   useEffect(() => { localStorage.setItem('indicatorSettings', JSON.stringify(indicatorSettings)); }, [indicatorSettings]);
 
-  const { candles, isConnected, fetchMoreHistory } = useDerivWS(selectedSymbol, selectedTimeframe);
+  const { candles, isConnected, fetchMoreHistory, errorMsg } = useDerivWS(selectedSymbol, selectedTimeframe);
   
   const workerResult = useIndicatorWorker(candles, activeIndicators, indicatorSettings);
 
@@ -402,32 +402,42 @@ export default function App() {
             <div 
               className="flex-[2] bg-[#111111] border border-neutral-800 rounded-lg overflow-hidden relative min-h-[200px]"
             >
-              <BottomChart 
-                data={candles} 
-                activeIndicators={activeIndicators}
-                settings={indicatorSettings}
-                zoomLevel={zoomLevel}
-                scrollOffset={scrollOffset}
-                symbol={selectedSymbol}
-                calcData={workerResult.bottom}
-              />
-              
-              {/* Mini MTF Trend Dashboard */}
-              <div className="absolute bottom-4 right-[65px] z-[40] flex gap-2 bg-neutral-900/90 backdrop-blur-md border border-neutral-800 px-2 py-1 rounded shadow-lg items-center select-none">
-                 <div className="flex items-center gap-1.5 text-[10px]">
-                    <span className="text-neutral-400 font-medium">2M</span>
-                    {m2Trend ? (
-                      <span className={`font-bold ${m2Trend === 'Rise' ? 'text-green-500' : 'text-red-500'}`}>{m2Trend}</span>
-                    ) : <span className="text-neutral-500">Wait</span>}
-                 </div>
-                 <div className="w-px h-3 bg-neutral-800"></div>
-                 <div className="flex items-center gap-1.5 text-[10px]">
-                    <span className="text-neutral-400 font-medium">5M</span>
-                    {m5Trend ? (
-                      <span className={`font-bold ${m5Trend === 'Rise' ? 'text-green-500' : 'text-red-500'}`}>{m5Trend}</span>
-                    ) : <span className="text-neutral-500">Wait</span>}
-                 </div>
-              </div>
+              {errorMsg ? (
+                <div className="w-full h-full flex flex-col items-center justify-center bg-red-900/10 text-red-500 p-6 text-center">
+                  <span className="text-xl font-bold mb-2">Connection Error</span>
+                  <span className="mb-4">{errorMsg}</span>
+                  <span className="text-sm text-neutral-400 max-w-md">If you are accessing this from a public URL like GitHub Pages, the open Deriv App ID may be blocked. Go to <a href="https://api.deriv.com/" target="_blank" rel="noreferrer" className="text-blue-400 underline">api.deriv.com</a> to register your own App ID and update <code className="text-neutral-300">src/lib/derivConfig.ts</code>. Also ensure your <code className="text-neutral-300">base</code> path is set in <code className="text-neutral-300">vite.config.ts</code>.</span>
+                </div>
+              ) : (
+                <>
+                  <BottomChart 
+                    data={candles} 
+                    activeIndicators={activeIndicators}
+                    settings={indicatorSettings}
+                    zoomLevel={zoomLevel}
+                    scrollOffset={scrollOffset}
+                    symbol={selectedSymbol}
+                    calcData={workerResult.bottom}
+                  />
+                  
+                  {/* Mini MTF Trend Dashboard */}
+                  <div className="absolute bottom-4 right-[65px] z-[40] flex gap-2 bg-neutral-900/90 backdrop-blur-md border border-neutral-800 px-2 py-1 rounded shadow-lg items-center select-none">
+                     <div className="flex items-center gap-1.5 text-[10px]">
+                        <span className="text-neutral-400 font-medium">2M</span>
+                        {m2Trend ? (
+                          <span className={`font-bold ${m2Trend === 'Rise' ? 'text-green-500' : 'text-red-500'}`}>{m2Trend}</span>
+                        ) : <span className="text-neutral-500">Wait</span>}
+                     </div>
+                     <div className="w-px h-3 bg-neutral-800"></div>
+                     <div className="flex items-center gap-1.5 text-[10px]">
+                        <span className="text-neutral-400 font-medium">5M</span>
+                        {m5Trend ? (
+                          <span className={`font-bold ${m5Trend === 'Rise' ? 'text-green-500' : 'text-red-500'}`}>{m5Trend}</span>
+                        ) : <span className="text-neutral-500">Wait</span>}
+                     </div>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Oscillators */}

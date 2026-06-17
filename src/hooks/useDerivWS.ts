@@ -10,6 +10,7 @@ export function useDerivWS(symbol: string, granularity: number, initialCount: nu
 
   const [candles, setCandles] = useState<CandleData[]>([]);
   const [isConnected, setIsConnected] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   
   const fetchMoreHistory = () => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
@@ -35,6 +36,7 @@ export function useDerivWS(symbol: string, granularity: number, initialCount: nu
 
     ws.onopen = () => {
       setIsConnected(true);
+      setErrorMsg(null);
 
       // Ping to keep connection alive
       pingIntervalRef.current = window.setInterval(() => {
@@ -60,6 +62,7 @@ export function useDerivWS(symbol: string, granularity: number, initialCount: nu
       
       if (data.error) {
         console.error("Deriv WS Error:", data.error.message);
+        setErrorMsg(`Deriv API Error: ${data.error.message}`);
         isFetchingHistoryRef.current = false;
         return;
       }
@@ -116,6 +119,7 @@ export function useDerivWS(symbol: string, granularity: number, initialCount: nu
 
     ws.onerror = (err) => {
       console.error('WebSocket Error', err);
+      setErrorMsg('WebSocket connection failed. Verify App ID and browser extensions.');
       isFetchingHistoryRef.current = false;
     };
 
@@ -131,5 +135,5 @@ export function useDerivWS(symbol: string, granularity: number, initialCount: nu
     };
   }, [symbol, granularity]);
 
-  return { candles, isConnected, fetchMoreHistory };
+  return { candles, isConnected, fetchMoreHistory, errorMsg };
 }
